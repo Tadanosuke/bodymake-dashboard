@@ -4,19 +4,20 @@ const GAS_ENDPOINT = process.env.GAS_ENDPOINT;
 
 export async function POST(request: Request) {
   const body = await request.json();
-
-  const { date, weight, calories, protein, fat, carbs, steps, workout } = body;
+  const { date, weight, steps, workout, sleep, doms, tomorrow } = body;
 
   if (!date || weight == null) {
     return NextResponse.json({ error: "date and weight are required" }, { status: 400 });
   }
 
+  const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };
+
   if (GAS_ENDPOINT) {
     try {
       const res = await fetch(GAS_ENDPOINT, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "appendLog", date, weight, calories, protein, fat, carbs, steps, workout }),
+        body:    JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("GAS POST failed");
       const data = await res.json();
@@ -27,6 +28,5 @@ export async function POST(request: Request) {
     }
   }
 
-  // Dev mode: just echo back success
-  return NextResponse.json({ success: true, message: "Demo mode: data not persisted. Set GAS_ENDPOINT to connect Google Sheets.", entry: body });
+  return NextResponse.json({ success: true, message: "Demo mode — set GAS_ENDPOINT to persist data.", entry: payload });
 }

@@ -56,7 +56,7 @@ function getOrCreateLogSheet(ss) {
   let sheet = ss.getSheetByName(LOG_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(LOG_SHEET_NAME);
-    sheet.appendRow(['日付', '体重(kg)', 'カロリー(kcal)', 'P(g)', 'F(g)', 'C(g)', '歩数', '運動メモ']);
+    sheet.appendRow(['日付', '体重(kg)', 'カロリー(kcal)', 'P(g)', 'F(g)', 'C(g)', '歩数', '筋トレメニュー', '睡眠', '筋肉痛(DOMS)', '明日の予定']);
     sheet.setFrozenRows(1);
   }
   return sheet;
@@ -174,13 +174,16 @@ function appendLog(payload) {
 
   const rowData = [
     dateStr,
-    parseFloat(payload.weight)   || '',
-    parseInt(payload.calories)   || '',
-    parseFloat(payload.protein)  || '',
-    parseFloat(payload.fat)      || '',
-    parseFloat(payload.carbs)    || '',
-    parseInt(payload.steps)      || '',
-    payload.workout              || '',
+    parseFloat(payload.weight)  || '',
+    parseInt(payload.calories)  || '',  // Gemini が記帳 (アプリからは空)
+    parseFloat(payload.protein) || '',  // 同上
+    parseFloat(payload.fat)     || '',  // 同上
+    parseFloat(payload.carbs)   || '',  // 同上
+    parseInt(payload.steps)     || '',
+    payload.workout             || '',
+    payload.sleep               || '',  // 睡眠時間 (例: 7.5時間 (23:30-07:00))
+    payload.doms                || '',  // 筋肉痛部位
+    payload.tomorrow            || '',  // 明日の予定タグ
   ];
 
   if (targetRow > 0) {
