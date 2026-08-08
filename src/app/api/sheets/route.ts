@@ -11,8 +11,13 @@ export async function GET() {
         next: { revalidate: 60 },
       });
       if (!res.ok) throw new Error("GAS fetch failed");
-      const data: DashboardData = await res.json();
-      return NextResponse.json(data);
+      const data = await res.json();
+      // GAS returned a logical error (e.g. sheet not found) — fall back to mock
+      if (!data || typeof data !== "object" || "error" in data || !data.currentWeight) {
+        console.error("GAS response invalid:", data);
+        throw new Error("GAS response invalid");
+      }
+      return NextResponse.json(data as DashboardData);
     } catch (e) {
       console.error("GAS fetch error, falling back to mock:", e);
     }

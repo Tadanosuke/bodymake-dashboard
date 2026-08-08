@@ -39,12 +39,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
-  const minWeight = Math.min(
-    ...data.map((d) => Math.min(d.weight ?? 999, d.predicted ?? 999, d.ideal)).filter((v) => v < 999)
-  ) - 1;
-  const maxWeight = Math.max(
-    ...data.map((d) => Math.max(d.weight ?? 0, d.predicted ?? 0, d.ideal))
-  ) + 1;
+  if (!data || data.length === 0) {
+    return <div className="h-52 flex items-center justify-center text-slate-500 text-sm">データなし</div>;
+  }
+
+  const validValues = data.map((d) => Math.min(d.weight ?? 999, d.predicted ?? 999, d.ideal)).filter((v) => v < 999);
+  const minWeight = validValues.length > 0 ? Math.min(...validValues) - 1 : phaseTarget - 5;
+  const maxValues = data.map((d) => Math.max(d.weight ?? 0, d.predicted ?? 0, d.ideal));
+  const maxWeight = maxValues.length > 0 ? Math.max(...maxValues) + 1 : phaseTarget + 5;
 
   return (
     <div className="w-full h-52">

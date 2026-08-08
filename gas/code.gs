@@ -13,6 +13,11 @@ function doGet(e) {
     return getDashboard();
   }
 
+  if (action === 'listSheets') {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    return respond({ sheets: ss.getSheets().map(s => s.getName()) });
+  }
+
   return respond({ error: 'Unknown action' });
 }
 
@@ -29,10 +34,14 @@ function doPost(e) {
 
 function getDashboard() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const logSheet = ss.getSheetByName(LOG_SHEET_NAME);
-
+  // Try the configured name first, then fall back to any sheet with weight data
+  let logSheet = ss.getSheetByName(LOG_SHEET_NAME);
   if (!logSheet) {
-    return respond({ error: 'Log sheet not found' });
+    const sheets = ss.getSheets();
+    logSheet = sheets.find(s => s.getLastRow() > 1) || sheets[0];
+  }
+  if (!logSheet) {
+    return respond({ error: 'No sheet found' });
   }
 
   const rows = logSheet.getDataRange().getValues();
