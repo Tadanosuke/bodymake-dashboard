@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, type User } from "firebase/auth";
+import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 const ALLOWED_EMAIL = process.env.NEXT_PUBLIC_ALLOWED_EMAIL ?? 'handtadanosuke@gmail.com';
@@ -15,7 +15,20 @@ export default function AuthGate({ children }: Props) {
 
   useEffect(() => {
     if (!auth) { setUser(null); return; }
-    return onAuthStateChanged(auth, setUser);
+    const _auth = auth;
+
+    // Handle redirect result after Google login
+    getRedirectResult(_auth)
+      .then(async result => {
+        if (result?.user && result.user.email !== ALLOWED_EMAIL) {
+          const { signOut } = await import('firebase/auth');
+          await signOut(_auth);
+          alert('このアカウントではアクセスできません。');
+        }
+      })
+      .catch(() => {});
+
+    return onAuthStateChanged(_auth, setUser);
   }, []);
 
   // Loading
@@ -32,20 +45,9 @@ export default function AuthGate({ children }: Props) {
 
   // Not authenticated or wrong account
   if (!user || user.email !== ALLOWED_EMAIL) {
-    const signIn = async () => {
+    const signIn = () => {
       if (!auth) return;
-      try {
-        const result = await signInWithPopup(auth, new GoogleAuthProvider());
-        if (result.user.email !== ALLOWED_EMAIL) {
-          const { signOut } = await import('firebase/auth');
-          await signOut(auth);
-          alert('このアカウントではアクセスできません。');
-        }
-      } catch (e: unknown) {
-        if ((e as { code?: string })?.code !== 'auth/popup-closed-by-user') {
-          console.error(e);
-        }
-      }
+      signInWithRedirect(auth, new GoogleAuthProvider());
     };
 
     return (
