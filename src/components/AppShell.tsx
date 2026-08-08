@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BarChart2, PlusCircle, ClipboardList } from "lucide-react";
+import dynamic from "next/dynamic";
+import { BarChart2, PlusCircle, ClipboardList, Dumbbell } from "lucide-react";
 import Dashboard from "./Dashboard";
 import QuickInput from "./QuickInput";
 import LogView from "./LogView";
 import type { DashboardData } from "@/lib/types";
 
-type Tab = "dashboard" | "input" | "log";
+const WorkoutTab = dynamic(() => import("./WorkoutTab"), { ssr: false });
+
+type Tab = "dashboard" | "input" | "log" | "workout";
 
 export default function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -39,6 +42,7 @@ export default function AppShell() {
     { id: "dashboard", label: "ダッシュボード", icon: <BarChart2 size={22} /> },
     { id: "input",     label: "記録する",       icon: <PlusCircle size={22} /> },
     { id: "log",       label: "ログ",           icon: <ClipboardList size={22} /> },
+    { id: "workout",   label: "筋トレ",         icon: <Dumbbell size={22} /> },
   ];
 
   return (
@@ -57,6 +61,7 @@ export default function AppShell() {
             {activeTab === "dashboard" && data && <Dashboard data={data} />}
             {activeTab === "input" && <QuickInput onSubmit={handleLogSubmit} />}
             {activeTab === "log" && data && <LogView logs={data.logs} />}
+            {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} />}
           </>
         )}
       </div>
@@ -68,16 +73,16 @@ export default function AppShell() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 py-2 px-6 transition-colors ${
+              className={`flex flex-col items-center gap-1 py-2 px-5 transition-colors ${
                 activeTab === tab.id
-                  ? "text-blue-400"
+                  ? tab.id === "workout" ? "text-red-400" : "text-blue-400"
                   : "text-slate-500 hover:text-slate-300"
               }`}
             >
               {tab.icon}
               <span className="text-[10px] font-medium">{tab.label}</span>
               {activeTab === tab.id && (
-                <span className="absolute bottom-0 w-8 h-0.5 bg-blue-400 rounded-full" />
+                <span className={`absolute bottom-0 w-8 h-0.5 rounded-full ${tab.id === "workout" ? "bg-red-400" : "bg-blue-400"}`} />
               )}
             </button>
           ))}

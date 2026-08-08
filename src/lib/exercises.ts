@@ -143,6 +143,66 @@ export function formatWorkoutForSheet(exercises: ExerciseSession[]): string {
     .join(' / ');
 }
 
+// ─── セッション履歴 (カレンダー・月間負荷量用) ──────────────────────────────
+
+const SESSIONS_KEY = 'bodymake_sessions';
+
+interface StoredSession {
+  exercises: Array<{ muscle: string; name: string; sets: Array<{ weight: number; reps: number }> }>;
+  totalVolume: number;
+}
+
+export function saveWorkoutSession(exercises: ExerciseSession[], date: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}') as Record<string, StoredSession>;
+    const valid = exercises.filter(ex => ex.sets.some(s => s.weight && s.reps));
+    if (valid.length === 0) return;
+    const totalVolume = valid.reduce((sum, ex) =>
+      sum + ex.sets.reduce((s2, s) => s2 + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0), 0);
+    sessions[date] = {
+      exercises: valid.map(ex => ({
+        muscle: ex.muscle, name: ex.name,
+        sets: ex.sets.filter(s => s.weight && s.reps).map(s => ({ weight: parseFloat(s.weight), reps: parseInt(s.reps) })),
+      })),
+      totalVolume,
+    };
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  } catch {}
+}
+
+export function getWorkoutDates(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return Object.keys(JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}'));
+  } catch { return []; }
+}
+
+/** 月間合計負荷量 (kg) */
+export function getMonthlyVolume(year: number, month: number): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}') as Record<string, StoredSession>;
+    const prefix = `${year}-${String(month).padStart(2, '0')}`;
+    return Object.entries(sessions)
+      .filter(([d]) => d.startsWith(prefix))
+      .reduce((s, [, sess]) => s + sess.totalVolume, 0);
+  } catch { return 0; }
+}
+
+/** トータル合計負荷量 (kg) */
+export function getTotalVolume(): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}') as Record<string, StoredSession>;
+    return Object.values(sessions).reduce((s, sess) => s + sess.totalVolume, 0);
+  } catch { return 0; }
+}
+
+export function getWorkoutDayCount(): number {
+  return getWorkoutDates().length;
+}
+
 export const MUSCLE_COLORS: Record<Muscle, string> = {
   胸:   'bg-blue-500/20 text-blue-300 border-blue-500/30',
   背中:  'bg-green-500/20 text-green-300 border-green-500/30',

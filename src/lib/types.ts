@@ -26,25 +26,41 @@ export interface Milestone {
 
 export interface TodayMetrics {
   calories: { actual: number; target: number };
-  protein: { actual: number; target: number };
-  fat: { actual: number; target: number };
-  carbs: { actual: number; target: number };
-  steps: { actual: number; target: number };
+  protein:  { actual: number; target: number };
+  fat:      { actual: number; target: number };
+  carbs:    { actual: number; target: number };
+  steps:    { actual: number; target: number };
+}
+
+export interface AIPlanExercise {
+  name:          string;
+  muscle:        string;
+  sets:          number;
+  targetWeight:  number;
+  targetReps:    number;
+  restSeconds:   number;
+}
+
+export interface AIPlan {
+  date:       string;
+  rawText:    string;
+  exercises?: AIPlanExercise[];
 }
 
 export interface DashboardData {
-  currentWeight: number;
-  phaseTarget: number;
-  finalTarget: number;
-  startWeight: number;
-  startDate: string;
-  phaseTargetDate: string;
-  finalTargetDate: string;
+  currentWeight:     number;
+  phaseTarget:       number;
+  finalTarget:       number;
+  startWeight:       number;
+  startDate:         string;
+  phaseTargetDate:   string;
+  finalTargetDate:   string;
   daysToPhaseTarget: number;
   daysToFinalTarget: number;
-  weeklyLossRate: number;
-  weightHistory: WeightEntry[];
-  milestones: Milestone[];
-  today: TodayMetrics;
-  logs: LogEntry[];
+  weeklyLossRate:    number;
+  weightHistory:     WeightEntry[];
+  milestones:        Milestone[];
+  today:             TodayMetrics;
+  logs:              LogEntry[];
+  aiPlan?:           AIPlan | null;
 }

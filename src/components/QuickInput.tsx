@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { CheckCircle2, AlertCircle, Send, Footprints, Moon, Sun, MapPin } from "lucide-react";
 import WorkoutLogger from "./WorkoutLogger";
 import {
-  saveWorkoutHistory, formatWorkoutForSheet,
+  saveWorkoutHistory, saveWorkoutSession, formatWorkoutForSheet,
   type ExerciseSession, type Store, STORE_KEY,
 } from "@/lib/exercises";
 
@@ -103,6 +103,7 @@ export default function QuickInput({ onSubmit }: Props) {
       if (!res.ok) throw new Error('送信失敗');
 
       saveWorkoutHistory(exercises, today);
+      saveWorkoutSession(exercises, today);
       setStatus('success');
       setTimeout(() => {
         setWeight(''); setSteps(''); setExercises([]);

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { TrendingDown, Calendar, Zap, Activity } from "lucide-react";
+import { TrendingDown, Calendar, Zap, Activity, Flame } from "lucide-react";
 import MilestoneCards from "./MilestoneCards";
 import NutritionMeters from "./NutritionMeters";
 import type { DashboardData } from "@/lib/types";
@@ -22,10 +22,28 @@ function StatBadge({ label, value, sub, color }: { label: string; value: string;
   );
 }
 
+function calcDaysAhead(data: DashboardData): number {
+  const startMs = new Date(data.startDate).getTime();
+  const finalMs = new Date(data.finalTargetDate).getTime();
+  const nowMs   = Date.now();
+  const totalDays   = (finalMs - startMs) / 86400000;
+  const daysPassed  = (nowMs  - startMs) / 86400000;
+  if (totalDays <= 0 || daysPassed < 0) return 0;
+  const expectedWeight = data.startWeight - (daysPassed / totalDays) * (data.startWeight - data.finalTarget);
+  const dailyRate = (data.startWeight - data.finalTarget) / totalDays;
+  return Math.round((expectedWeight - data.currentWeight) / dailyRate);
+}
+
 export default function Dashboard({ data }: Props) {
   const lost = data.startWeight - data.currentWeight;
   const remaining = data.currentWeight - data.finalTarget;
   const progressPct = Math.round((lost / (data.startWeight - data.finalTarget)) * 100);
+  const daysAhead = calcDaysAhead(data);
+
+  const last7Logs = data.logs.slice(-7);
+  const weeklyCals = last7Logs.reduce((sum, l) => sum + (l.calories || 0), 0);
+  const weeklyTarget = data.today.calories.target * 7;
+  const weeklyBalance = weeklyCals - weeklyTarget;
 
   return (
     <div className="px-4 pb-4 space-y-4 fade-in">
@@ -72,6 +90,17 @@ export default function Dashboard({ data }: Props) {
             />
           </div>
         </div>
+
+        {/* Days-ahead badge */}
+        {daysAhead !== 0 && (
+          <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+            daysAhead > 0
+              ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+              : 'bg-orange-500/15 border border-orange-500/30 text-orange-400'
+          }`}>
+            {daysAhead > 0 ? `⚡ 計画より ${daysAhead}日 前倒し` : `⚠ 計画より ${Math.abs(daysAhead)}日 遅れ`}
+          </div>
+        )}
       </div>
 
       {/* Stat grid */}
@@ -144,6 +173,58 @@ export default function Dashboard({ data }: Props) {
         </div>
         <NutritionMeters today={data.today} />
       </div>
+
+      {/* Weekly calorie balance */}
+      {last7Logs.length > 0 && (
+        <div className="bg-[#111827] border border-[#1e2d40] rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Flame size={15} className="text-orange-400" />
+              <h2 className="text-sm font-semibold text-slate-200">週間カロリー収支</h2>
+            </div>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+              weeklyBalance < 0
+                ? 'bg-emerald-500/15 text-emerald-400'
+                : 'bg-red-500/15 text-red-400'
+            }`}>
+              {weeklyBalance < 0 ? `${weeklyBalance.toLocaleString()} kcal` : `+${weeklyBalance.toLocaleString()} kcal`}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-[#0f1a2b] rounded-xl p-2">
+              <p className="text-[10px] text-slate-500 mb-0.5">直近{last7Logs.length}日</p>
+              <p className="text-base font-black text-white">{weeklyCals.toLocaleString()}</p>
+              <p className="text-[9px] text-slate-500">kcal 摂取</p>
+            </div>
+            <div className="bg-[#0f1a2b] rounded-xl p-2">
+              <p className="text-[10px] text-slate-500 mb-0.5">目標</p>
+              <p className="text-base font-black text-slate-300">{weeklyTarget.toLocaleString()}</p>
+              <p className="text-[9px] text-slate-500">kcal 想定</p>
+            </div>
+            <div className={`rounded-xl p-2 ${weeklyBalance < 0 ? 'bg-emerald-900/20' : 'bg-red-900/20'}`}>
+              <p className="text-[10px] text-slate-500 mb-0.5">収支</p>
+              <p className={`text-base font-black ${weeklyBalance < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {weeklyBalance < 0 ? weeklyBalance.toLocaleString() : `+${weeklyBalance.toLocaleString()}`}
+              </p>
+              <p className="text-[9px] text-slate-500">kcal</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Plan card */}
+      {data.aiPlan && (
+        <div className="bg-[#111827] border border-yellow-600/30 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap size={15} className="text-yellow-400" />
+            <h2 className="text-sm font-semibold text-yellow-300">Gemini AI 次回計画</h2>
+            <span className="text-[10px] text-slate-500 ml-auto">{data.aiPlan.date}</span>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-line">
+            {data.aiPlan.rawText}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
