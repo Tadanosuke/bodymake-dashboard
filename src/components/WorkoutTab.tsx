@@ -13,6 +13,10 @@ import {
   getWorkoutDayCount, getMonthlyVolume, getTotalVolume, STORE_KEY,
   type Muscle, type ExerciseSession, type WorkoutSet, type Store,
 } from "@/lib/exercises";
+import {
+  saveWorkoutSessionFS, saveWorkoutHistoryFS,
+  getWorkoutDatesFS, getMonthlyVolumeFS, getTotalVolumeFS,
+} from "@/lib/firestore";
 import type { AIPlan } from "@/lib/types";
 
 const WorkoutCalendar = dynamic(() => import("./WorkoutCalendar"), { ssr: false });
@@ -240,10 +244,19 @@ export default function WorkoutTab({ aiPlan }: Props) {
   useEffect(() => {
     const saved = localStorage.getItem(STORE_KEY) as Store | null;
     if (saved) setStore(saved);
+
+    // Load workout stats from Firestore (with localStorage fallback)
     const now = new Date();
-    setDayCount(getWorkoutDayCount());
-    setMonthVol(getMonthlyVolume(now.getFullYear(), now.getMonth() + 1));
-    setTotalVol(getTotalVolume());
+    const y = now.getFullYear(), m = now.getMonth() + 1;
+    Promise.all([
+      getWorkoutDatesFS().then(dates => dates.length || getWorkoutDayCount()),
+      getMonthlyVolumeFS(y, m).then(v => v || getMonthlyVolume(y, m)),
+      getTotalVolumeFS().then(v => v || getTotalVolume()),
+    ]).then(([days, monthly, total]) => {
+      setDayCount(days);
+      setMonthVol(monthly);
+      setTotalVol(total);
+    });
   }, []);
 
   // Session volume
@@ -291,18 +304,34 @@ export default function WorkoutTab({ aiPlan }: Props) {
     setStatus('loading');
     try {
       const workoutStr = formatWorkoutForSheet(exercises);
-      const res = await fetch('/api/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: selectedDate, weight: 0, workout: workoutStr }),
-      });
-      if (!res.ok) throw new Error();
+
+      // Save to Firebase (primary)
+      await saveWorkoutSessionFS(exercises, selectedDate);
+      await saveWorkoutHistoryFS(exercises, selectedDate);
+
+      // Save to localStorage (offline fallback)
       saveWorkoutHistory(exercises, selectedDate);
       saveWorkoutSession(exercises, selectedDate);
-      setDayCount(getWorkoutDayCount());
+
+      // Write to GAS + daily log
+      await fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate, workout: workoutStr }),
+      });
+
+      // Refresh stats from Firebase
       const now = new Date();
-      setMonthVol(getMonthlyVolume(now.getFullYear(), now.getMonth()+1));
-      setTotalVol(getTotalVolume());
+      const y = now.getFullYear(), mo = now.getMonth() + 1;
+      const [days, monthly, total] = await Promise.all([
+        getWorkoutDatesFS().then(dates => dates.length),
+        getMonthlyVolumeFS(y, mo),
+        getTotalVolumeFS(),
+      ]);
+      setDayCount(days);
+      setMonthVol(monthly);
+      setTotalVol(total);
+
       setStatus('success');
       setTimeout(() => { setExercises([]); setStatus('idle'); }, 1500);
     } catch { setStatus('error'); setTimeout(() => setStatus('idle'), 2000); }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { saveDailyLog } from "@/lib/firestore";
 
 const GAS_ENDPOINT = process.env.GAS_ENDPOINT;
 
@@ -6,27 +7,36 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { date, weight, steps, workout, sleep, doms, tomorrow } = body;
 
-  if (!date || weight == null) {
-    return NextResponse.json({ error: "date and weight are required" }, { status: 400 });
+  if (!date) {
+    return NextResponse.json({ error: "date is required" }, { status: 400 });
   }
 
-  const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };
+  // Build Firebase data (only non-empty fields)
+  const logData: Record<string, unknown> = {};
+  if (weight && parseFloat(weight) > 0) logData.weight = parseFloat(weight);
+  if (steps && parseInt(steps) > 0)     logData.steps   = parseInt(steps);
+  if (workout)  logData.workout  = workout;
+  if (sleep)    logData.sleep    = sleep;
+  if (doms)     logData.doms     = doms;
+  if (tomorrow) logData.tomorrow = tomorrow;
 
+  // Write to Firebase
+  await saveDailyLog(date, logData);
+
+  // Also write to GAS/spreadsheet (for Gemini's reference)
   if (GAS_ENDPOINT) {
     try {
+      const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };
       const res = await fetch(GAS_ENDPOINT, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("GAS POST failed");
-      const data = await res.json();
-      return NextResponse.json(data);
+      if (!res.ok) console.error("GAS POST failed:", res.status);
     } catch (e) {
       console.error("GAS POST error:", e);
-      return NextResponse.json({ error: "Failed to save to spreadsheet" }, { status: 500 });
     }
   }
 
-  return NextResponse.json({ success: true, message: "Demo mode — set GAS_ENDPOINT to persist data.", entry: payload });
+  return NextResponse.json({ success: true });
 }

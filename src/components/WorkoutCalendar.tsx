@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getWorkoutDatesFS } from "@/lib/firestore";
 import { getWorkoutDates } from "@/lib/exercises";
 
 interface Props {
@@ -18,7 +19,14 @@ export default function WorkoutCalendar({ selectedDate, onSelect }: Props) {
   const [workoutDates, setWorkoutDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setWorkoutDates(new Set(getWorkoutDates()));
+    // Try Firestore first, fall back to localStorage
+    getWorkoutDatesFS().then(dates => {
+      if (dates.length > 0) {
+        setWorkoutDates(new Set(dates));
+      } else {
+        setWorkoutDates(new Set(getWorkoutDates()));
+      }
+    });
   }, []);
 
   const prev = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
