@@ -43,9 +43,9 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
     return <div className="h-52 flex items-center justify-center text-slate-500 text-sm">データなし</div>;
   }
 
-  const validValues = data.map((d) => Math.min(d.weight ?? 999, d.predicted ?? 999, d.ideal)).filter((v) => v < 999);
+  const validValues = data.map((d) => Math.min(d.weight ?? 999, d.predicted ?? 999)).filter((v) => v < 999);
   const minWeight = validValues.length > 0 ? Math.min(...validValues) - 1 : phaseTarget - 5;
-  const maxValues = data.map((d) => Math.max(d.weight ?? 0, d.predicted ?? 0, d.ideal));
+  const maxValues = data.map((d) => Math.max(d.weight ?? 0, d.predicted ?? 0));
   const maxWeight = maxValues.length > 0 ? Math.max(...maxValues) + 1 : phaseTarget + 5;
 
   return (
@@ -75,15 +75,6 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
           />
           <ReferenceLine y={phaseTarget} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />
           <ReferenceLine y={finalTarget} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1} />
-          <Line
-            dataKey="ideal"
-            name="理想ライン"
-            stroke="#334155"
-            strokeWidth={1.5}
-            strokeDasharray="5 3"
-            dot={false}
-            activeDot={false}
-          />
           <Line
             dataKey="predicted"
             name="予測"

@@ -103,7 +103,7 @@ export default function Dashboard({ data }: Props) {
         )}
       </div>
 
-      {/* Stat grid */}
+      {/* Stat grid — 2 badges */}
       <div className="grid grid-cols-2 gap-2.5">
         <StatBadge
           label="Phase目標"
@@ -112,19 +112,7 @@ export default function Dashboard({ data }: Props) {
           color="text-amber-400"
         />
         <StatBadge
-          label="残り日数(Phase)"
-          value={`${data.daysToPhaseTarget} 日`}
-          sub={`週 -${data.weeklyLossRate} kg ペース`}
-          color="text-blue-400"
-        />
-        <StatBadge
-          label="最終目標まで"
-          value={`${data.daysToFinalTarget} 日`}
-          sub="2027年1月末"
-          color="text-purple-400"
-        />
-        <StatBadge
-          label="週間減少率"
+          label="週間ペース"
           value={`-${data.weeklyLossRate} kg`}
           sub="目標 -0.5～0.7 kg"
           color="text-emerald-400"
@@ -162,7 +150,7 @@ export default function Dashboard({ data }: Props) {
           <Calendar size={15} className="text-purple-400" />
           <h2 className="text-sm font-semibold text-slate-200">マイルストーン</h2>
         </div>
-        <MilestoneCards milestones={data.milestones} currentWeight={data.currentWeight} />
+        <MilestoneCards milestones={data.milestones} currentWeight={data.currentWeight} startWeight={data.startWeight} />
       </div>
 
       {/* Nutrition & Steps */}
@@ -212,19 +200,6 @@ export default function Dashboard({ data }: Props) {
         </div>
       )}
 
-      {/* AI Plan card */}
-      {data.aiPlan && (
-        <div className="bg-[#111827] border border-yellow-600/30 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Zap size={15} className="text-yellow-400" />
-            <h2 className="text-sm font-semibold text-yellow-300">Gemini AI 次回計画</h2>
-            <span className="text-[10px] text-slate-500 ml-auto">{data.aiPlan.date}</span>
-          </div>
-          <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-line">
-            {data.aiPlan.rawText}
-          </p>
-        </div>
-      )}
     </div>
   );
 }

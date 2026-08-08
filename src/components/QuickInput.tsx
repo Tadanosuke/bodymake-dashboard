@@ -1,13 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Send, Footprints, Moon, Sun, MapPin, Pencil } from "lucide-react";
-import WorkoutLogger from "./WorkoutLogger";
-import {
-  saveWorkoutHistory, saveWorkoutSession, formatWorkoutForSheet,
-  type ExerciseSession, type Store, STORE_KEY,
-} from "@/lib/exercises";
-import { getDailyLog, saveDailyLog } from "@/lib/firestore";
+import { CheckCircle2, AlertCircle, Send, Footprints, Moon, Sun, Pencil } from "lucide-react";
+import { getDailyLog } from "@/lib/firestore";
 
 interface Props {
   onSubmit: () => void;
@@ -38,23 +33,12 @@ export default function QuickInput({ onSubmit }: Props) {
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).replace(/\//g, '-');
 
-  // Page state
   const [pageState, setPageState] = useState<'loading' | 'view' | 'form'>('loading');
 
-  // Form fields
-  const [weight,    setWeight]    = useState('');
-  const [steps,     setSteps]     = useState('');
-  const [exercises, setExercises] = useState<ExerciseSession[]>([]);
-  const [status,    setStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [errorMsg,  setErrorMsg]  = useState('');
-
-  // Store
-  const [store, setStore] = useState<Store>('自宅・牛久店');
-  useEffect(() => {
-    const saved = localStorage.getItem(STORE_KEY) as Store | null;
-    if (saved) setStore(saved);
-  }, []);
-  const changeStore = (s: Store) => { setStore(s); localStorage.setItem(STORE_KEY, s); };
+  const [weight,   setWeight]   = useState('');
+  const [steps,    setSteps]    = useState('');
+  const [status,   setStatus]   = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Sleep
   const [bedtime,  setBedtime]  = useState('');
@@ -75,22 +59,18 @@ export default function QuickInput({ onSubmit }: Props) {
     });
   };
 
-  // 明日の予定
   const [tomorrowTag, setTomorrowTag] = useState('');
 
-  // Today's Firebase log — check on mount
   const [todayLog, setTodayLog] = useState<Awaited<ReturnType<typeof getDailyLog>>>(null);
 
   useEffect(() => {
     getDailyLog(today).then(log => {
       setTodayLog(log);
       if (log?.weight) {
-        // Pre-fill form fields from today's log
         setWeight(String(log.weight));
         if (log.steps)  setSteps(String(log.steps));
         if (log.doms && log.doms !== 'なし') setDoms(log.doms.split(', '));
         if (log.tomorrow) setTomorrowTag(log.tomorrow);
-        // Parse sleep string e.g. "7.5時間 (23:00-06:30)"
         if (log.sleep) {
           const m = log.sleep.match(/\((\d{2}:\d{2})-(\d{2}:\d{2})\)/);
           if (m) { setBedtime(m[1]); setWaketime(m[2]); }
@@ -107,9 +87,8 @@ export default function QuickInput({ onSubmit }: Props) {
     if (!weight) { setStatus('error'); setErrorMsg('体重を入力してください'); return; }
     setStatus('loading');
     try {
-      const workoutStr = formatWorkoutForSheet(exercises);
-      const sleepStr   = sleepHours ? `${sleepHours}時間 (${bedtime}-${waketime})` : '';
-      const domsStr    = doms.length > 0 ? doms.join(', ') : '';
+      const sleepStr = sleepHours ? `${sleepHours}時間 (${bedtime}-${waketime})` : '';
+      const domsStr  = doms.length > 0 ? doms.join(', ') : '';
 
       await fetch('/api/log', {
         method:  'POST',
@@ -118,22 +97,14 @@ export default function QuickInput({ onSubmit }: Props) {
           date:     today,
           weight:   parseFloat(weight),
           steps:    steps ? parseInt(steps) : undefined,
-          workout:  workoutStr || undefined,
           sleep:    sleepStr   || undefined,
           doms:     domsStr    || undefined,
           tomorrow: tomorrowTag || undefined,
         }),
       });
 
-      // Also save to localStorage for offline fallback
-      saveWorkoutHistory(exercises, today);
-      saveWorkoutSession(exercises, today);
-
       setStatus('success');
-      setTimeout(() => {
-        setExercises([]); setStatus('idle');
-        onSubmit();
-      }, 1500);
+      setTimeout(() => { setStatus('idle'); onSubmit(); }, 1500);
     } catch {
       setStatus('error');
       setErrorMsg('送信に失敗しました。もう一度お試しください。');
@@ -153,25 +124,12 @@ export default function QuickInput({ onSubmit }: Props) {
   if (pageState === 'view' && todayLog?.weight) {
     return (
       <div className="px-4 pb-4 fade-in">
-        <div className="pt-10 pb-4 flex items-start justify-between">
-          <div>
-            <p className="text-[11px] text-blue-400 font-semibold tracking-widest uppercase mb-0.5">TODAY</p>
-            <h1 className="text-2xl font-bold text-white">今日の記録</h1>
-            <p className="text-xs text-slate-500 mt-0.5">{today}</p>
-          </div>
-          <div className="flex items-center bg-[#111827] border border-[#1e2d40] rounded-full p-0.5 mt-1">
-            {(['自宅・牛久店', '赤坂店'] as Store[]).map(s => (
-              <button key={s} type="button" onClick={() => changeStore(s)}
-                className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-full transition-all ${
-                  store === s ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'
-                }`}>
-                <MapPin size={9} />{s === '赤坂店' ? '赤坂' : '牛久'}
-              </button>
-            ))}
-          </div>
+        <div className="pt-10 pb-4">
+          <p className="text-[11px] text-blue-400 font-semibold tracking-widest uppercase mb-0.5">TODAY</p>
+          <h1 className="text-2xl font-bold text-white">今日の記録</h1>
+          <p className="text-xs text-slate-500 mt-0.5">{today}</p>
         </div>
 
-        {/* 今日の体重カード */}
         <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-2xl p-5 mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -224,26 +182,14 @@ export default function QuickInput({ onSubmit }: Props) {
   // ─── 入力フォーム ──────────────────────────────────────────────────────────
   return (
     <div className="px-4 pb-4 fade-in">
-      <div className="pt-10 pb-4 flex items-start justify-between">
-        <div>
-          <p className="text-[11px] text-blue-400 font-semibold tracking-widest uppercase mb-0.5">
-            {pageState === 'form' && todayLog?.weight ? 'EDIT' : 'QUICK LOG'}
-          </p>
-          <h1 className="text-2xl font-bold text-white">
-            {todayLog?.weight ? '記録を編集' : '今日の記録'}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">{today}</p>
-        </div>
-        <div className="flex items-center bg-[#111827] border border-[#1e2d40] rounded-full p-0.5 mt-1">
-          {(['自宅・牛久店', '赤坂店'] as Store[]).map(s => (
-            <button key={s} type="button" onClick={() => changeStore(s)}
-              className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-full transition-all ${
-                store === s ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'
-              }`}>
-              <MapPin size={9} />{s === '赤坂店' ? '赤坂' : '牛久'}
-            </button>
-          ))}
-        </div>
+      <div className="pt-10 pb-4">
+        <p className="text-[11px] text-blue-400 font-semibold tracking-widest uppercase mb-0.5">
+          {pageState === 'form' && todayLog?.weight ? 'EDIT' : 'QUICK LOG'}
+        </p>
+        <h1 className="text-2xl font-bold text-white">
+          {todayLog?.weight ? '記録を編集' : '今日の記録'}
+        </h1>
+        <p className="text-xs text-slate-500 mt-0.5">{today}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -345,16 +291,6 @@ export default function QuickInput({ onSubmit }: Props) {
               <span className="text-xs text-slate-500">歩</span>
             </div>
           </div>
-        </div>
-
-        {/* 筋トレログ */}
-        <WorkoutLogger store={store} exercises={exercises} onChange={setExercises} />
-
-        {/* PFC note */}
-        <div className="bg-[#0f1a2b] border border-[#1e2d40] rounded-xl px-3.5 py-3">
-          <p className="text-[10px] text-slate-500 leading-relaxed">
-            💬 PFC・カロリーはGemini Sparkが食事写真から自動解析しスプレッドシートへ記録します。
-          </p>
         </div>
 
         {/* ステータス */}

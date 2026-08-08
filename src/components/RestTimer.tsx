@@ -6,6 +6,7 @@ import { X, Play, Pause, RotateCcw } from "lucide-react";
 interface Props {
   initialSeconds: number;
   onClose: () => void;
+  compact?: boolean;
 }
 
 function playBeep() {
@@ -30,10 +31,12 @@ function vibrate(pattern: number[]) {
 }
 
 const DURATIONS = [60, 90, 120] as const;
-const RADIUS = 52;
-const CIRC   = 2 * Math.PI * RADIUS;
+const RADIUS    = 52;
+const CIRC      = 2 * Math.PI * RADIUS;
+const R_COMPACT = 14;
+const C_COMPACT = 2 * Math.PI * R_COMPACT;
 
-export default function RestTimer({ initialSeconds, onClose }: Props) {
+export default function RestTimer({ initialSeconds, onClose, compact = false }: Props) {
   const [total,     setTotal]     = useState(initialSeconds);
   const [remaining, setRemaining] = useState(initialSeconds);
   const [running,   setRunning]   = useState(true);
@@ -69,12 +72,75 @@ export default function RestTimer({ initialSeconds, onClose }: Props) {
   const dashOffset = CIRC * (1 - pct);
   const mins       = Math.floor(remaining / 60);
   const secs       = remaining % 60;
+  const timeStr    = mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}`;
 
+  const timerColor = done ? "#10b981" : remaining <= 10 ? "#ef4444" : "#ef4444";
+
+  // ─── Compact sticky bar ────────────────────────────────────────────────────
+  if (compact) {
+    const cDashOffset = C_COMPACT * (1 - pct);
+    return (
+      <div className="fixed bottom-[80px] left-0 right-0 z-40 bg-[#0d1526]/98 backdrop-blur-md border-t border-[#1e2d40] px-4 pt-2.5 pb-2">
+        <div className="flex items-center gap-3">
+          {/* Mini circular progress */}
+          <svg width="36" height="36" viewBox="0 0 36 36" className="-rotate-90 shrink-0">
+            <circle cx="18" cy="18" r={R_COMPACT} fill="none" stroke="#1e2d40" strokeWidth="3" />
+            <circle
+              cx="18" cy="18" r={R_COMPACT} fill="none"
+              stroke={timerColor} strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={C_COMPACT}
+              strokeDashoffset={cDashOffset}
+              className="transition-all duration-1000"
+            />
+          </svg>
+
+          {/* Time + label */}
+          <div className="flex-1 min-w-0">
+            {done ? (
+              <p className="text-sm font-black text-emerald-400">完了！ 次のセットへ</p>
+            ) : (
+              <p className="text-xl font-black text-white tabular-nums">{timeStr}<span className="text-xs text-slate-500 ml-1">秒</span></p>
+            )}
+            <div className="flex gap-1.5 mt-1">
+              {DURATIONS.map(d => (
+                <button key={d} type="button" onClick={() => reset(d)}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                    total === d && !done
+                      ? 'bg-red-600 text-white border-transparent'
+                      : 'border-[#2a3a55] text-slate-500 hover:text-slate-300'
+                  }`}>
+                  {d}秒
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button type="button" onClick={() => setRunning(r => !r)} disabled={done}
+              className="bg-red-700 hover:bg-red-600 disabled:opacity-30 text-white p-2 rounded-xl transition-colors active:scale-95">
+              {running ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button type="button" onClick={() => reset(total)}
+              className="text-slate-400 hover:text-slate-200 p-2 transition-colors">
+              <RotateCcw size={14} />
+            </button>
+            <button type="button" onClick={onClose}
+              className="text-slate-500 hover:text-slate-300 p-2 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Full-screen modal ─────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm">
       <div className="bg-[#0d1526] border border-[#1e2d40] rounded-3xl p-6 w-72 flex flex-col items-center gap-5 shadow-2xl">
 
-        {/* Title */}
         <div className="flex items-center justify-between w-full">
           <span className="text-sm font-bold text-slate-300">インターバルタイマー</span>
           <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-300">
@@ -82,13 +148,12 @@ export default function RestTimer({ initialSeconds, onClose }: Props) {
           </button>
         </div>
 
-        {/* Circular progress */}
         <div className="relative">
           <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
             <circle cx="70" cy="70" r={RADIUS} fill="none" stroke="#1e2d40" strokeWidth="10" />
             <circle
               cx="70" cy="70" r={RADIUS} fill="none"
-              stroke={done ? "#10b981" : remaining <= 10 ? "#ef4444" : "#ef4444"}
+              stroke={timerColor}
               strokeWidth="10"
               strokeLinecap="round"
               strokeDasharray={CIRC}
@@ -101,58 +166,40 @@ export default function RestTimer({ initialSeconds, onClose }: Props) {
               <span className="text-2xl font-black text-emerald-400">完了！</span>
             ) : (
               <>
-                <span className="text-4xl font-black text-white tabular-nums">
-                  {mins > 0 ? `${mins}:${String(secs).padStart(2,'0')}` : secs}
-                </span>
+                <span className="text-4xl font-black text-white tabular-nums">{timeStr}</span>
                 <span className="text-xs text-slate-500">秒</span>
               </>
             )}
           </div>
         </div>
 
-        {/* Duration presets */}
         <div className="flex gap-2">
           {DURATIONS.map(d => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => reset(d)}
+            <button key={d} type="button" onClick={() => reset(d)}
               className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
                 total === d && !done
                   ? 'bg-red-600 text-white border-transparent'
                   : 'border-[#2a3a55] text-slate-400 hover:text-slate-200'
-              }`}
-            >
+              }`}>
               {d}秒
             </button>
           ))}
         </div>
 
-        {/* Controls */}
         <div className="flex gap-3 w-full">
-          <button
-            type="button"
-            onClick={() => setRunning(r => !r)}
-            disabled={done}
-            className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-2xl transition-all active:scale-95 disabled:opacity-40"
-          >
+          <button type="button" onClick={() => setRunning(r => !r)} disabled={done}
+            className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-2xl transition-all active:scale-95 disabled:opacity-40">
             {running ? <><Pause size={16} /> 一時停止</> : <><Play size={16} /> 再開</>}
           </button>
-          <button
-            type="button"
-            onClick={() => reset(total)}
-            className="flex items-center justify-center bg-[#1a2235] border border-[#2a3a55] text-slate-300 p-3 rounded-2xl hover:bg-[#2a3a55] transition-all active:scale-95"
-          >
+          <button type="button" onClick={() => reset(total)}
+            className="flex items-center justify-center bg-[#1a2235] border border-[#2a3a55] text-slate-300 p-3 rounded-2xl hover:bg-[#2a3a55] transition-all active:scale-95">
             <RotateCcw size={16} />
           </button>
         </div>
 
         {done && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full py-3 bg-emerald-600 text-white font-bold rounded-2xl active:scale-95 transition-all"
-          >
+          <button type="button" onClick={onClose}
+            className="w-full py-3 bg-emerald-600 text-white font-bold rounded-2xl active:scale-95 transition-all">
             次のセットへ
           </button>
         )}

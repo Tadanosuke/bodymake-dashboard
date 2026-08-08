@@ -451,7 +451,7 @@ export default function WorkoutTab({ aiPlan }: Props) {
         <ExercisePicker store={store} onSelect={addExercise} onClose={() => setPickerOpen(false)} addedNames={exercises.map(e => e.name)} />
       )}
       {timerOpen && (
-        <RestTimer initialSeconds={timerSecs} onClose={() => setTimerOpen(false)} />
+        <RestTimer initialSeconds={timerSecs} onClose={() => setTimerOpen(false)} compact />
       )}
     </div>
   );
