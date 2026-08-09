@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import { Home, PenLine, Dumbbell, History, Settings as SettingsIcon, RefreshCw } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getUserSettings } from "@/lib/firestore";
+import { getUserSettings, getRecentDailyLogs } from "@/lib/firestore";
+import { buildDashboard, type GasResponse } from "@/lib/dashboard";
 import AuthGate, { useCurrentUser } from "./AuthGate";
 import Dashboard from "./Dashboard";
 import QuickInput from "./QuickInput";
@@ -17,6 +18,26 @@ const WorkoutTab = dynamic(() => import("./WorkoutTab"), { ssr: false });
 
 type Tab = "home" | "today" | "workout" | "history" | "settings";
 
+// Firestore の client SDK はオフライン時に reject せず無限に待つことがあるので、
+// 必ず上限を設けてフォールバック値で先に進む。
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+function LoadingPane() {
+  return (
+    <div className="flex items-center justify-center min-h-[70vh]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+        <p className="text-slate-400 text-sm">読み込み中...</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Inner shell (needs UserContext from AuthGate) ────────────────────────────
 function AppShellInner() {
   const currentUser = useCurrentUser();
@@ -24,34 +45,40 @@ function AppShellInner() {
 
   const [activeTab,   setActiveTab]   = useState<Tab>("home");
   const [data,        setData]        = useState<DashboardData | null>(null);
-  const [loading,     setLoading]     = useState(true);
   const [refreshing,  setRefreshing]  = useState(false);
   const [refreshKey,  setRefreshKey]  = useState(0);
   // 各ユーザー自身のスプレッドシート接続先 (undefined = 読込中, '' = 未連携)
   const [gasEndpoint, setGasEndpoint] = useState<string | undefined>(undefined);
+  const [gasError,    setGasError]    = useState("");
 
   const fetchData = async (uid: string, gas: string, silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
+    if (silent) setRefreshing(true);
     try {
-      const q = `/api/sheets?uid=${uid}&gas=${encodeURIComponent(gas)}&t=${Date.now()}`;
-      const res = await fetch(q, { cache: 'no-store' });
-      const json = await res.json();
-      setData(json);
-    } catch {
-      console.error("Failed to load data");
+      // スプレッドシート(GAS)と Firestore を並行取得してからマージする。
+      // Firestore はここ(ブラウザ)でしか読めない — 認証情報があるのはクライアントだけ。
+      const gasPromise: Promise<GasResponse> = gas
+        ? fetch(`/api/sheets?gas=${encodeURIComponent(gas)}&t=${Date.now()}`, { cache: 'no-store' })
+            .then(r => r.json())
+            .catch(() => ({ logs: [], aiPlan: null }))
+        : Promise.resolve({ logs: [], aiPlan: null });
+
+      const [gasData, fsLogs] = await Promise.all([
+        withTimeout(gasPromise, 15_000, { logs: [], aiPlan: null }),
+        withTimeout(getRecentDailyLogs(uid, 60), 8_000, []),
+      ]);
+
+      setGasError(typeof gasData.error === 'string' ? gasData.error : '');
+      setData(buildDashboard(fsLogs, gasData));
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
 
   // 1. ログイン後、まずこのユーザーの接続先を取得
   useEffect(() => {
-    if (!uid) { setLoading(false); return; }
-    getUserSettings(uid)
-      .then(s => setGasEndpoint(s.gasEndpoint ?? ''))
-      .catch(() => setGasEndpoint(''));
+    if (!uid) { setData(buildDashboard([], {})); return; }
+    withTimeout(getUserSettings(uid), 8_000, {})
+      .then(s => setGasEndpoint(s.gasEndpoint ?? ''));
   }, [uid]);
 
   // 2. 接続先が判明したらデータ取得
@@ -101,22 +128,23 @@ function AppShellInner() {
     <div className="flex flex-col min-h-screen bg-[#0a0f1e]">
       {/* Main content */}
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: "80px" }}>
-        {loading ? (
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-              <p className="text-slate-400 text-sm">読み込み中...</p>
-            </div>
+        {/* ダッシュボードの読込中でも「今日」「筋トレ」「設定」は即座に開けるようにする。
+            スプレッドシートが遅い/落ちている時にアプリ全体が固まらないため。 */}
+        {gasError && activeTab === "home" && (
+          <div className="mx-4 mt-4 rounded-xl bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+            <p className="text-[11px] text-amber-300">{gasError}（設定タブでURLを確認してください）</p>
           </div>
-        ) : (
-          <>
-            {activeTab === "home"    && data && <Dashboard data={data} />}
-            {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} gasEndpoint={gasEndpoint ?? ''} />}
-            {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} />}
-            {activeTab === "history" && data && <LogView logs={data.logs} />}
-            {activeTab === "settings" && <Settings onSaved={handleSettingsSaved} onLogout={handleLogout} />}
-          </>
         )}
+
+        {activeTab === "home" && (
+          data ? <Dashboard data={data} /> : <LoadingPane />
+        )}
+        {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} gasEndpoint={gasEndpoint ?? ''} />}
+        {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} />}
+        {activeTab === "history" && (
+          data ? <LogView logs={data.logs} /> : <LoadingPane />
+        )}
+        {activeTab === "settings" && <Settings onSaved={handleSettingsSaved} onLogout={handleLogout} />}
       </div>
 
       {/* Bottom navigation */}

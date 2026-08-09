@@ -39,12 +39,18 @@ export default function Settings({ onSaved, onLogout }: Props) {
     setStatus("saving");
     setErrMsg("");
     try {
-      // 接続テスト（空欄なら連携解除として保存）
+      // 接続テスト（空欄なら連携解除として保存）。
+      // 応答が無いまま「保存中」で固まらないよう必ず打ち切る。
       if (url) {
-        const res  = await fetch(`/api/sheets?uid=${uid}&gas=${encodeURIComponent(url)}`);
-        const json = await res.json();
-        if (json.isEmpty && !json.logs?.length) {
-          setErrMsg("接続できましたが、データが空でした。まだ記録がない場合は正常です。");
+        try {
+          const res  = await fetch(`/api/sheets?gas=${encodeURIComponent(url)}`, {
+            cache: "no-store", signal: AbortSignal.timeout(15_000),
+          });
+          const json = await res.json();
+          if (json.error)            setErrMsg(`注意: ${json.error}`);
+          else if (!json.logs?.length) setErrMsg("接続できましたが、データが空でした。まだ記録がない場合は正常です。");
+        } catch {
+          setErrMsg("注意: スプレッドシートに接続できませんでしたが、URLは保存します。");
         }
       }
       await saveUserSettings(uid, { gasEndpoint: url });
