@@ -21,11 +21,14 @@ function computeIdeal(dateStr: string): number {
   return Math.max(START_WEIGHT - (daysSinceStart / 214) * 17.5, FINAL_TARGET);
 }
 
-export async function GET() {
-  // 1. Fetch Firebase daily logs (weight, steps, workout from app)
-  const fsLogs = await getRecentDailyLogs(60);
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const uid = searchParams.get('uid') ?? '';
 
-  // 2. Fetch GAS calorie/PFC/AI plan data (Gemini-written)
+  // 1. Fetch this user's Firebase daily logs
+  const fsLogs = uid ? await getRecentDailyLogs(uid, 60) : [];
+
+  // 2. Fetch GAS calorie/PFC/AI plan data (Gemini-written, shared spreadsheet)
   interface GasLog { date: string; weight?: number; calories?: number; protein?: number; fat?: number; carbs?: number; steps?: number; workout?: string; }
   interface GasResponse { logs?: GasLog[]; aiPlan?: DashboardData['aiPlan'] }
   let gasData: GasResponse = {};
@@ -40,7 +43,7 @@ export async function GET() {
   }
   const gasLogs: GasLog[] = gasData.logs || [];
 
-  // 3. Merge: Firebase is authoritative for user-written fields; GAS for Gemini-written calories
+  // 3. Merge: Firebase authoritative for user-written fields; GAS for Gemini calories
   const allDates = new Set([
     ...fsLogs.map(l => l.date),
     ...gasLogs.map(l => l.date).filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)),
@@ -111,7 +114,7 @@ export async function GET() {
     weightHistory,
     milestones: [
       { weight: 87, label: 'Phase 1',  idealDate: '2026-09-15', achieved: currentWeight <= 87 },
-      { weight: 85, label: 'Phase 2',  idealDate: '2026-10-10', achieved: currentWeight <= 85 },
+      { weight: 85, label: 'Phase 2',  idealDate: '2026-10-15', achieved: currentWeight <= 85 },
       { weight: 82, label: 'Phase 3',  idealDate: '2026-11-05', achieved: currentWeight <= 82 },
       { weight: 80, label: 'Phase 4',  idealDate: '2026-11-25', achieved: currentWeight <= 80 },
       { weight: 77, label: 'Phase 5',  idealDate: '2026-12-20', achieved: currentWeight <= 77 },

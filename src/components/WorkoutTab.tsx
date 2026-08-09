@@ -18,6 +18,7 @@ import {
   getWorkoutDatesFS, getMonthlyVolumeFS, getTotalVolumeFS,
 } from "@/lib/firestore";
 import type { AIPlan } from "@/lib/types";
+import { useCurrentUser } from "./AuthGate";
 
 const WorkoutCalendar = dynamic(() => import("./WorkoutCalendar"), { ssr: false });
 
@@ -225,6 +226,9 @@ interface Props {
 }
 
 export default function WorkoutTab({ aiPlan }: Props) {
+  const currentUser = useCurrentUser();
+  const uid = currentUser?.uid ?? '';
+
   const today = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\//g,'-');
 
   const [store,        setStore]        = useState<Store>('自宅・牛久店');
@@ -246,12 +250,13 @@ export default function WorkoutTab({ aiPlan }: Props) {
     if (saved) setStore(saved);
 
     // Load workout stats from Firestore (with localStorage fallback)
+    if (!uid) return;
     const now = new Date();
     const y = now.getFullYear(), m = now.getMonth() + 1;
     Promise.all([
-      getWorkoutDatesFS().then(dates => dates.length || getWorkoutDayCount()),
-      getMonthlyVolumeFS(y, m).then(v => v || getMonthlyVolume(y, m)),
-      getTotalVolumeFS().then(v => v || getTotalVolume()),
+      getWorkoutDatesFS(uid).then(dates => dates.length || getWorkoutDayCount()),
+      getMonthlyVolumeFS(uid, y, m).then(v => v || getMonthlyVolume(y, m)),
+      getTotalVolumeFS(uid).then(v => v || getTotalVolume()),
     ]).then(([days, monthly, total]) => {
       setDayCount(days);
       setMonthVol(monthly);
@@ -306,8 +311,8 @@ export default function WorkoutTab({ aiPlan }: Props) {
       const workoutStr = formatWorkoutForSheet(exercises);
 
       // Save to Firebase (primary)
-      await saveWorkoutSessionFS(exercises, selectedDate);
-      await saveWorkoutHistoryFS(exercises, selectedDate);
+      await saveWorkoutSessionFS(uid, exercises, selectedDate);
+      await saveWorkoutHistoryFS(uid, exercises, selectedDate);
 
       // Save to localStorage (offline fallback)
       saveWorkoutHistory(exercises, selectedDate);
@@ -317,16 +322,16 @@ export default function WorkoutTab({ aiPlan }: Props) {
       await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: selectedDate, workout: workoutStr }),
+        body: JSON.stringify({ uid, date: selectedDate, workout: workoutStr }),
       });
 
       // Refresh stats from Firebase
       const now = new Date();
       const y = now.getFullYear(), mo = now.getMonth() + 1;
       const [days, monthly, total] = await Promise.all([
-        getWorkoutDatesFS().then(dates => dates.length),
-        getMonthlyVolumeFS(y, mo),
-        getTotalVolumeFS(),
+        getWorkoutDatesFS(uid).then(dates => dates.length),
+        getMonthlyVolumeFS(uid, y, mo),
+        getTotalVolumeFS(uid),
       ]);
       setDayCount(days);
       setMonthVol(monthly);

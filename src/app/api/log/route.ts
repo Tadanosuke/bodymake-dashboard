@@ -5,7 +5,7 @@ const GAS_ENDPOINT = process.env.GAS_ENDPOINT;
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { date, weight, steps, workout, sleep, doms, tomorrow } = body;
+  const { uid, date, weight, steps, workout, sleep, doms, tomorrow } = body;
 
   if (!date) {
     return NextResponse.json({ error: "date is required" }, { status: 400 });
@@ -20,10 +20,12 @@ export async function POST(request: Request) {
   if (doms)     logData.doms     = doms;
   if (tomorrow) logData.tomorrow = tomorrow;
 
-  // Write to Firebase
-  await saveDailyLog(date, logData);
+  // Write to Firebase (per-user path)
+  if (uid) {
+    await saveDailyLog(uid, date, logData);
+  }
 
-  // Also write to GAS/spreadsheet (for Gemini's reference)
+  // Also write to GAS/spreadsheet (Gemini reference — only meaningful for primary user)
   if (GAS_ENDPOINT) {
     try {
       const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };

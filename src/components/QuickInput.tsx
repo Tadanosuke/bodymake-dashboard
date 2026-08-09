@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { CheckCircle2, AlertCircle, Send, Footprints, Moon, Sun, Pencil } from "lucide-react";
 import { getDailyLog } from "@/lib/firestore";
+import { useCurrentUser } from "./AuthGate";
 
 interface Props {
   onSubmit: () => void;
@@ -29,6 +30,9 @@ function sleepColor(h: string | null) {
 }
 
 export default function QuickInput({ onSubmit }: Props) {
+  const currentUser = useCurrentUser();
+  const uid = currentUser?.uid ?? '';
+
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).replace(/\//g, '-');
@@ -64,7 +68,8 @@ export default function QuickInput({ onSubmit }: Props) {
   const [todayLog, setTodayLog] = useState<Awaited<ReturnType<typeof getDailyLog>>>(null);
 
   useEffect(() => {
-    getDailyLog(today).then(log => {
+    if (!uid) { setPageState('form'); return; }
+    getDailyLog(uid, today).then(log => {
       setTodayLog(log);
       if (log?.weight) {
         setWeight(String(log.weight));
@@ -80,7 +85,7 @@ export default function QuickInput({ onSubmit }: Props) {
         setPageState('form');
       }
     });
-  }, [today]);
+  }, [today, uid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,6 +99,7 @@ export default function QuickInput({ onSubmit }: Props) {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          uid,
           date:     today,
           weight:   parseFloat(weight),
           steps:    steps ? parseInt(steps) : undefined,

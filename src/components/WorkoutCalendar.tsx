@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getWorkoutDatesFS } from "@/lib/firestore";
 import { getWorkoutDates } from "@/lib/exercises";
+import { useCurrentUser } from "./AuthGate";
 
 interface Props {
   selectedDate: string;
@@ -13,21 +14,24 @@ interface Props {
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function WorkoutCalendar({ selectedDate, onSelect }: Props) {
+  const currentUser = useCurrentUser();
+  const uid = currentUser?.uid ?? '';
+
   const today = new Date();
   const [year,  setYear]  = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [workoutDates, setWorkoutDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Try Firestore first, fall back to localStorage
-    getWorkoutDatesFS().then(dates => {
+    if (!uid) { setWorkoutDates(new Set(getWorkoutDates())); return; }
+    getWorkoutDatesFS(uid).then(dates => {
       if (dates.length > 0) {
         setWorkoutDates(new Set(dates));
       } else {
         setWorkoutDates(new Set(getWorkoutDates()));
       }
     });
-  }, []);
+  }, [uid]);
 
   const prev = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const next = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
