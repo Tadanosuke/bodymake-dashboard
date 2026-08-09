@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "sync-claude": "node scripts/sync-claude.js",
+    "sync-gemini": "node scripts/push-gemini-brief.js",
     "deploy-gas": "npx clasp push --force && npx clasp deploy --deploymentId AKfycbw4p0jbXBNSEtFbDzUdIMSX34Rx-GurZiYYJSlKDZ8DGfBjPz4vX0ZlwitxLmfTAq12 -d \"auto\""
   },
   "dependencies": {

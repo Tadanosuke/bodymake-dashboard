@@ -50,7 +50,8 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action || 'appendLog';
-    if (action === 'appendLog') return respond(appendLog(payload));
+    if (action === 'appendLog')     return respond(appendLog(payload));
+    if (action === 'updateAppSpec') return respond(updateAppSpec(payload));
     return respond({ error: 'Unknown action: ' + action });
   } catch (err) {
     return respond({ error: String(err) });
@@ -95,6 +96,33 @@ function getSheet(ss) {
 function listSheets() {
   const ss = getSS();
   return { sheets: ss.getSheets().map(s => ({ name: s.getName(), rows: s.getLastRow() })) };
+}
+
+// Claude Code → Gemini Spark への申し送りタブ。
+// アプリを変更するたび `npm run sync-gemini` から呼ばれ、全文を書き換える。
+const SPEC_SHEET_NAME = 'アプリ仕様_Claude→Gemini';
+
+function updateAppSpec(payload) {
+  const ss = getSS();
+  let sh = ss.getSheetByName(SPEC_SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(SPEC_SHEET_NAME);
+
+  const content = String(payload.content || '');
+  if (!content.trim()) return { error: 'content が空です' };
+
+  sh.clear();
+  sh.getRange('A1').setValue(
+    '【自動更新】Claude Code がアプリを変更するたびに全文を書き換えます。ここは手動編集しないでください。');
+  sh.getRange('A2').setValue(
+    '最終更新: ' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')
+    + (payload.commit ? '  /  commit ' + payload.commit : ''));
+  sh.getRange('A3').setValue(content);
+
+  sh.getRange('A1:A2').setFontWeight('bold');
+  sh.getRange('A3').setWrap(true).setVerticalAlignment('top');
+  sh.setColumnWidth(1, 900);
+
+  return { success: true, sheet: SPEC_SHEET_NAME, chars: content.length };
 }
 
 // CLAUDE_MD_MASTERタブのA1セル内容を返す

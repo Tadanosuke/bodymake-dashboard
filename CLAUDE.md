@@ -14,6 +14,7 @@
   - `ボディメイク＆減量プロジェクト_総合管理シート`: A〜K列（日付/体重/摂取cal/P/F/C/消費cal/歩数/筋トレ/その他運動/メモ・コンディション）
   - `進捗＆予測ダッシュボード`: Gemini Sparkが「AI次回計画メニュー (YYYY/MM/DD 部位 場所)」見出しで翌日メニューを記入
   - `CLAUDE_MD_MASTER`: A1セルに最新のCLAUDE.md全文（`npm run sync-claude` でローカルへ取得）
+  - `アプリ仕様_Claude→Gemini`: Claude Codeがアプリの仕様・変更点をGemini Sparkへ申し送るタブ（`npm run sync-gemini` で自動更新）
 - **主要データ連携項目**:
   - `AI次回計画メニュー`: Gemini Sparkが書き込んだ翌日の予定メニュー（部位・種目・目標重量・目標回数・セット数・レスト時間）をアプリ側で自動読み込み表示。
   - `週間カロリー収支 ＆ 前倒し日数`: 過去7日間の累計カロリー収支および「目標達成が何日前倒し/遅れているか（例: +2.5日 前倒し）」の自動計算データ。
@@ -50,3 +51,22 @@
 - **Git & Vercel自動デプロイ**: `git add . && git commit -m "feat: [内容]" && git push origin main`
 - **GASデプロイ**: `npm run deploy-gas`（clasp push + deploy）
 - **CLAUDE.md取得**: `npm run sync-claude`（CLAUDE_MD_MASTER の A1 を取得）
+- **Gemini申し送り更新**: `npm run sync-gemini`（`docs/GEMINI_BRIEF.md` → 『アプリ仕様_Claude→Gemini』タブ）
+
+## 5. 【必須】変更のたびに毎回行うこと
+アプリの仕様・機能・データ書式を変更したら、デプロイ後に**必ず**以下を実行する。
+Gemini Sparkはこのタブを見てアプリの現状を把握するため、更新を怠ると連携がずれる。
+
+1. `docs/GEMINI_BRIEF.md` を今回の変更内容に合わせて更新する
+   - 機能を足した/消した → §7 機能一覧
+   - データの書式や列の意味を変えた → §3 / §4（**最重要**。ここがずれるとAI計画が読めなくなる）
+   - Geminiに依頼したいことが変わった → §9
+2. `npm run sync-gemini` を実行してスプレッドシートへ転写する
+3. 実行結果（更新文字数）を確認し、ユーザーに何を申し送ったか報告する
+
+### 既知の制約
+- **Firestore**: プロジェクト `bodymake-37d49` でCloud Firestore APIが有効化されるまで、
+  端末間同期は動作しない。`src/lib/firestore.ts` は localStorage を正とし、
+  全呼び出しに6秒の上限を設けてあるため、無効のままでもアプリは固まらず動作する。
+- **GASの追加権限**: ウェブアプリは実行時に必要と判定されたスコープしか要求しない。
+  DriveAppなど新しいAPIを使うと承認が必要になるため、原則 `SpreadsheetApp` の範囲で実装する。
