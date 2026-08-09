@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     await saveDailyLog(uid, date, logData);
   }
 
-  // Also write to GAS/spreadsheet (Gemini reference — only meaningful for primary user)
+  // 設定タブで自分のシートを連携している場合のみ、そのシートにも書き込む（Gemini参照用）
   if (GAS_ENDPOINT) {
     try {
       const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };
