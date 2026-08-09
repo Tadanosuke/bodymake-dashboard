@@ -39,6 +39,7 @@ export interface AIPlanExercise {
   targetWeight:  number;
   targetReps:    number;
   restSeconds:   number;
+  setsDetail?:   string;  // "20kg×10, 40kg×8, 80kg×2" などGemini生成の詳細
 }
 
 export interface AIPlan {
@@ -48,6 +49,7 @@ export interface AIPlan {
 }
 
 export interface DashboardData {
+  isEmpty?: boolean;
   currentWeight:     number;
   phaseTarget:       number;
   finalTarget:       number;
