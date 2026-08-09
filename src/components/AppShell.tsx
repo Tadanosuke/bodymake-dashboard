@@ -30,7 +30,7 @@ function AppShellInner() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch(`/api/sheets?uid=${uid}`);
+      const res = await fetch(`/api/sheets?uid=${uid}&t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       setData(json);
     } catch {

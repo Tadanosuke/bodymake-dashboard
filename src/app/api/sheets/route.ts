@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getRecentDailyLogs } from "@/lib/firestore";
-import { MOCK_DATA } from "@/lib/mockData";
 import type { DashboardData, WeightEntry, LogEntry } from "@/lib/types";
 
 const GAS_ENDPOINT = process.env.GAS_ENDPOINT;
@@ -67,9 +66,39 @@ export async function GET(request: Request) {
       };
     });
 
-  // If no data at all, return mock
+  // New user with no data — return empty state (not mock data)
   if (mergedLogs.every(l => !l.weight && !l.calories)) {
-    return NextResponse.json(MOCK_DATA);
+    return NextResponse.json({
+      isEmpty: true,
+      currentWeight:     0,
+      phaseTarget:       PHASE_TARGET,
+      finalTarget:       FINAL_TARGET,
+      startWeight:       START_WEIGHT,
+      startDate:         START_DATE,
+      phaseTargetDate:   PHASE_TARGET_DATE,
+      finalTargetDate:   FINAL_TARGET_DATE,
+      daysToPhaseTarget: daysTo(PHASE_TARGET_DATE),
+      daysToFinalTarget: daysTo(FINAL_TARGET_DATE),
+      weeklyLossRate:    0.55,
+      weightHistory:     [],
+      milestones: [
+        { weight: 87, label: 'Phase 1',  idealDate: '2026-09-15', achieved: false },
+        { weight: 85, label: 'Phase 2',  idealDate: '2026-10-15', achieved: false },
+        { weight: 82, label: 'Phase 3',  idealDate: '2026-11-05', achieved: false },
+        { weight: 80, label: 'Phase 4',  idealDate: '2026-11-25', achieved: false },
+        { weight: 77, label: 'Phase 5',  idealDate: '2026-12-20', achieved: false },
+        { weight: 75, label: '最終目標', idealDate: '2027-01-31', achieved: false },
+      ],
+      today: {
+        calories: { actual: 0, target: 1800 },
+        protein:  { actual: 0, target: 150 },
+        fat:      { actual: 0, target: 55 },
+        carbs:    { actual: 0, target: 180 },
+        steps:    { actual: 0, target: 8000 },
+      },
+      logs: [],
+      aiPlan: gasData.aiPlan ?? null,
+    } satisfies DashboardData);
   }
 
   // 4. Build weight history from entries that have weight

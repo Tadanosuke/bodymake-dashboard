@@ -35,6 +35,24 @@ function calcDaysAhead(data: DashboardData): number {
 }
 
 export default function Dashboard({ data }: Props) {
+  // Empty state for new users
+  if (data.isEmpty || data.currentWeight === 0) {
+    return (
+      <div className="px-4 pb-4 fade-in">
+        <div className="pt-12 pb-5 px-1" style={{ background: "linear-gradient(180deg, #0d1b35 0%, #0a0f1e 100%)" }}>
+          <p className="text-[11px] text-blue-400 font-semibold tracking-widest uppercase mb-1">15kg減量 ボディメイクプロジェクト</p>
+          <p className="text-3xl font-black text-white">-- <span className="text-xl font-medium text-slate-400">kg</span></p>
+          <p className="text-sm text-slate-500 mt-1">「今日」タブから体重を記録してスタート！</p>
+        </div>
+        <div className="bg-[#111827] border border-blue-500/20 rounded-2xl p-6 text-center">
+          <p className="text-4xl mb-3">💪</p>
+          <p className="text-base font-bold text-white mb-1">まだデータがありません</p>
+          <p className="text-xs text-slate-400">「今日」タブから体重・歩数・睡眠を記録すると<br />ここにグラフと分析が表示されます</p>
+        </div>
+      </div>
+    );
+  }
+
   const lost = data.startWeight - data.currentWeight;
   const remaining = data.currentWeight - data.finalTarget;
   const progressPct = Math.round((lost / (data.startWeight - data.finalTarget)) * 100);
