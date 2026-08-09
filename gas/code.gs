@@ -123,67 +123,47 @@ const TEMPLATE_CLAUDE_MD = [
   'それ以外の自由記述は消さずに残されます。',
 ].join('\n');
 
-// 他ユーザー配布用に、個人データを完全に消した複製を1つ作る。
+const LOG_HEADERS = [
+  '日付', '体重(kg)', '摂取カロリー(kcal)', 'タンパク質P(g)', '脂質F(g)', '炭水化物C(g)',
+  '消費カロリー(kcal)', '歩数', '筋トレ部位・メニュー', 'その他運動', 'メモ・コンディション',
+];
+
+const DASHBOARD_GUIDE = [
+  'このタブにはAIコーチ(Gemini等)が翌日の計画を書き込みます。',
+  'アプリは下記の見出しを探して自動で読み取ります。',
+  '',
+  '書式:',
+  'AI次回計画メニュー (YYYY/MM/DD 部位 場所)',
+  '種目名: 20kg*1*10(アップ), 40kg*3*8 | レスト90秒',
+  '  ※ 重量kg * ダンベルの本数 * 回数 (ラベル)',
+  '  ※ 見出しの直後の行から、空行までを1つの計画として読み込みます。',
+].join('\n');
+
+// 他ユーザー配布用のテンプレートを新規作成する。
+// 既存シートの複製ではなく空から組み立てるので、個人データが混入する余地がない。
+// また DriveApp を使わないため追加の権限承認も不要。
 // 生成後に返る templateId を NEXT_PUBLIC_TEMPLATE_SPREADSHEET_ID に設定する。
 function makeTemplate() {
-  const file = DriveApp.getFileById(getSS().getId())
-                       .makeCopy('ボディメイク＆減量プロジェクト_テンプレート');
-  const copy = SpreadsheetApp.openById(file.getId());
+  const ss = SpreadsheetApp.create('ボディメイク＆減量プロジェクト_テンプレート');
 
-  copy.getSheets().forEach(function (sh) {
-    const name = sh.getName();
+  const main = ss.getSheets()[0];
+  main.setName(LOG_SHEET_NAME);
+  main.getRange(1, 1, 1, LOG_HEADERS.length)
+      .setValues([LOG_HEADERS])
+      .setFontWeight('bold');
+  main.setFrozenRows(1);
 
-    if (name === LOG_SHEET_NAME) {
-      // ヘッダー(1行目)だけ残し、2行目以降の実績を全削除
-      if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
-      sh.getDataRange().clearNote();
-      return;
-    }
-
-    if (name === 'CLAUDE_MD_MASTER') {
-      sh.clear();
-      sh.clearNotes();
-      sh.getRange('A1').setValue(TEMPLATE_CLAUDE_MD);
-      return;
-    }
-
-    // 進捗＆予測ダッシュボード等: 数式・AI計画・実績すべて個人データなので全消去
-    sh.clear();
-    sh.clearNotes();
-  });
+  ss.insertSheet('進捗＆予測ダッシュボード').getRange('A1').setValue(DASHBOARD_GUIDE);
+  ss.insertSheet('CLAUDE_MD_MASTER').getRange('A1').setValue(TEMPLATE_CLAUDE_MD);
 
   SpreadsheetApp.flush();
 
-  // ── 公開前チェック: 個人データが1セルも残っていないことを確認する ──
-  const residue = [];
-  copy.getSheets().forEach(function (sh) {
-    const name = sh.getName();
-    const rows = sh.getDataRange().getValues();
-    for (let r = 0; r < rows.length; r++) {
-      // メインシートのヘッダー行と CLAUDE_MD_MASTER の定型文だけは許可
-      if (name === LOG_SHEET_NAME && r === 0) continue;
-      if (name === 'CLAUDE_MD_MASTER' && r === 0) continue;
-      for (let c = 0; c < rows[r].length; c++) {
-        if (String(rows[r][c] || '').trim() !== '') {
-          residue.push(name + '!' + (r + 1) + ':' + (c + 1));
-        }
-      }
-    }
-  });
-
-  if (residue.length) {
-    // 消し残しがある状態では絶対に公開しない。複製ごと破棄する。
-    file.setTrashed(true);
-    return { error: 'テンプレートに個人データが残っていたため中止しました', residue: residue.slice(0, 20) };
-  }
-
-  // クリーンであることを確認できたのでリンク共有を有効化
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
   return {
-    templateId: file.getId(),
-    copyUrl:    'https://docs.google.com/spreadsheets/d/' + file.getId() + '/copy',
-    verified:   'no personal data',
+    templateId: ss.getId(),
+    editUrl:    ss.getUrl(),
+    copyUrl:    'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/copy',
+    sheets:     ss.getSheets().map(function (s) { return s.getName(); }),
+    note:       '共有設定を「リンクを知っている全員 / 閲覧者」にしてください',
   };
 }
 

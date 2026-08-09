@@ -5,7 +5,8 @@ import { Link2, Check, AlertCircle, ExternalLink, FileSpreadsheet, LogOut } from
 import { getUserSettings, saveUserSettings } from "@/lib/firestore";
 import { useCurrentUser } from "./AuthGate";
 
-const TEMPLATE_ID = process.env.NEXT_PUBLIC_TEMPLATE_SPREADSHEET_ID ?? "";
+const TEMPLATE_ID  = process.env.NEXT_PUBLIC_TEMPLATE_SPREADSHEET_ID ?? "";
+const GAS_CODE_URL = "https://raw.githubusercontent.com/Tadanosuke/bodymake-dashboard/main/gas/code.gs";
 
 interface Props {
   onSaved: () => void;
@@ -154,16 +155,27 @@ export default function Settings({ onSaved, onLogout }: Props) {
             <span className="text-slate-300">拡張機能 → Apps Script</span> を開く
           </li>
           <li>
-            <span className="text-blue-400 font-bold">3.</span>
+            <span className="text-blue-400 font-bold">3.</span> 下のコードを全部コピーして、
+            エディタの中身と<span className="text-slate-300">丸ごと入れ替えて保存</span>
+            <a
+              href={GAS_CODE_URL}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-1.5 flex items-center justify-center gap-1.5 bg-blue-600/15 border border-blue-600/30 text-blue-300 rounded-lg py-2.5 font-bold active:scale-95 transition-all"
+            >
+              <ExternalLink size={12} /> 連携コードを開く
+            </a>
+          </li>
+          <li>
+            <span className="text-blue-400 font-bold">4.</span>
             <span className="text-slate-300">デプロイ → 新しいデプロイ → ウェブアプリ</span> を選び、
             <span className="text-slate-300">アクセスできるユーザー = 全員</span> にしてデプロイ
           </li>
           <li>
-            <span className="text-blue-400 font-bold">4.</span> 表示された
+            <span className="text-blue-400 font-bold">5.</span> 表示された
             <span className="text-slate-300"> /exec で終わるURL</span> を上の欄に貼り付けて保存
           </li>
           <li>
-            <span className="text-blue-400 font-bold">5.</span> Gemini（またはお好きなAI）にそのスプレッドシートを共有すれば、
+            <span className="text-blue-400 font-bold">6.</span> Gemini（またはお好きなAI）にそのスプレッドシートを共有すれば、
             カロリー計算やAI計画メニューの自動作成が使えます
           </li>
         </ol>
