@@ -2,18 +2,20 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Home, PenLine, Dumbbell, History, LogOut, RefreshCw } from "lucide-react";
+import { Home, PenLine, Dumbbell, History, Settings as SettingsIcon, RefreshCw } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { getUserSettings } from "@/lib/firestore";
 import AuthGate, { useCurrentUser } from "./AuthGate";
 import Dashboard from "./Dashboard";
 import QuickInput from "./QuickInput";
 import LogView from "./LogView";
+import Settings from "./Settings";
 import type { DashboardData } from "@/lib/types";
 
 const WorkoutTab = dynamic(() => import("./WorkoutTab"), { ssr: false });
 
-type Tab = "home" | "today" | "workout" | "history";
+type Tab = "home" | "today" | "workout" | "history" | "settings";
 
 // ─── Inner shell (needs UserContext from AuthGate) ────────────────────────────
 function AppShellInner() {
@@ -25,12 +27,15 @@ function AppShellInner() {
   const [loading,     setLoading]     = useState(true);
   const [refreshing,  setRefreshing]  = useState(false);
   const [refreshKey,  setRefreshKey]  = useState(0);
+  // 各ユーザー自身のスプレッドシート接続先 (undefined = 読込中, '' = 未連携)
+  const [gasEndpoint, setGasEndpoint] = useState<string | undefined>(undefined);
 
-  const fetchData = async (uid: string, silent = false) => {
+  const fetchData = async (uid: string, gas: string, silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch(`/api/sheets?uid=${uid}&t=${Date.now()}`, { cache: 'no-store' });
+      const q = `/api/sheets?uid=${uid}&gas=${encodeURIComponent(gas)}&t=${Date.now()}`;
+      const res = await fetch(q, { cache: 'no-store' });
       const json = await res.json();
       setData(json);
     } catch {
@@ -41,23 +46,38 @@ function AppShellInner() {
     }
   };
 
+  // 1. ログイン後、まずこのユーザーの接続先を取得
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
-    fetchData(uid);
+    getUserSettings(uid)
+      .then(s => setGasEndpoint(s.gasEndpoint ?? ''))
+      .catch(() => setGasEndpoint(''));
   }, [uid]);
+
+  // 2. 接続先が判明したらデータ取得
+  useEffect(() => {
+    if (!uid || gasEndpoint === undefined) return;
+    fetchData(uid, gasEndpoint);
+  }, [uid, gasEndpoint]);
 
   // Manual refresh trigger
   useEffect(() => {
-    if (!uid || refreshKey === 0) return;
-    fetchData(uid, true);
+    if (!uid || refreshKey === 0 || gasEndpoint === undefined) return;
+    fetchData(uid, gasEndpoint, true);
   }, [refreshKey]);
 
   // Auto-refresh every 60 seconds (silent)
   useEffect(() => {
-    if (!uid) return;
-    const id = setInterval(() => fetchData(uid, true), 60_000);
+    if (!uid || gasEndpoint === undefined) return;
+    const id = setInterval(() => fetchData(uid, gasEndpoint, true), 60_000);
     return () => clearInterval(id);
-  }, [uid]);
+  }, [uid, gasEndpoint]);
+
+  // 設定画面で連携先を変更したら即再取得
+  const handleSettingsSaved = () => {
+    if (!uid) return;
+    getUserSettings(uid).then(s => setGasEndpoint(s.gasEndpoint ?? ''));
+  };
 
   const handleLogSubmit = () => {
     setRefreshKey((k) => k + 1);
@@ -74,6 +94,7 @@ function AppShellInner() {
     { id: "today",   label: "今日",    icon: <PenLine size={22} /> },
     { id: "workout", label: "筋トレ",  icon: <Dumbbell size={22} /> },
     { id: "history", label: "履歴",    icon: <History size={22} /> },
+    { id: "settings", label: "設定",   icon: <SettingsIcon size={22} /> },
   ];
 
   return (
@@ -90,9 +111,10 @@ function AppShellInner() {
         ) : (
           <>
             {activeTab === "home"    && data && <Dashboard data={data} />}
-            {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} />}
-            {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} />}
+            {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} gasEndpoint={gasEndpoint ?? ''} />}
+            {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} />}
             {activeTab === "history" && data && <LogView logs={data.logs} />}
+            {activeTab === "settings" && <Settings onSaved={handleSettingsSaved} onLogout={handleLogout} />}
           </>
         )}
       </div>
@@ -134,18 +156,6 @@ function AppShellInner() {
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             <span className="text-[9px]">更新</span>
           </button>
-
-          {/* Logout */}
-          {auth && (
-            <button
-              onClick={handleLogout}
-              className="flex flex-col items-center gap-1 py-2 px-3 text-slate-600 hover:text-slate-400 transition-colors shrink-0"
-              title="ログアウト"
-            >
-              <LogOut size={18} />
-              <span className="text-[9px]">ログアウト</span>
-            </button>
-          )}
         </div>
       </nav>
     </div>

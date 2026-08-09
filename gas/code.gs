@@ -39,7 +39,7 @@ function doGet(e) {
     if (action === 'getDashboard') return respond(getDashboard());
     if (action === 'listSheets')  return respond(listSheets());
     if (action === 'getClaude')   return respond(getClaude());
-    if (action === 'dumpSheet')   return respond(dumpSheet(e.parameter.name));
+    if (action === 'makeTemplate') return respond(makeTemplate());
     return respond({ error: 'Unknown action: ' + action });
   } catch (err) {
     return respond({ error: String(err), stack: err.stack });
@@ -76,6 +76,14 @@ function toDateStr(val) {
   }
 }
 
+// このスクリプトが紐づいているスプレッドシートを返す。
+// テンプレートをコピーした各ユーザーの環境では、コピーされた本人のシートが対象になる。
+function getSS() {
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
 function getSheet(ss) {
   const sheet = ss.getSheetByName(LOG_SHEET_NAME);
   if (!sheet) throw new Error('Sheet1 が見つかりません');
@@ -85,16 +93,98 @@ function getSheet(ss) {
 // ========== アクション ==========
 
 function listSheets() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSS();
   return { sheets: ss.getSheets().map(s => ({ name: s.getName(), rows: s.getLastRow() })) };
 }
 
 // CLAUDE_MD_MASTERタブのA1セル内容を返す
 function getClaude() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSS();
   const sheet = ss.getSheetByName('CLAUDE_MD_MASTER');
   if (!sheet) return { error: 'CLAUDE_MD_MASTER sheet not found' };
   return { content: String(sheet.getRange('A1').getValue() || '') };
+}
+
+const TEMPLATE_CLAUDE_MD = [
+  '# ボディメイク＆減量プロジェクト',
+  '',
+  '## 目標',
+  '（例）半年で -10kg。開始体重 __kg → 目標体重 __kg。',
+  '',
+  '## AIコーチへの依頼',
+  '毎晩、このシートの実績を読んで翌日の計画を',
+  '『進捗＆予測ダッシュボード』タブに次の形式で書き込んでください。',
+  '',
+  'AI次回計画メニュー (2026/01/01 胸 ジム)',
+  'ベンチプレス: 20kg*1*10(アップ), 40kg*3*8 | レスト90秒',
+  '',
+  '## メモ欄の書式',
+  'K列には「睡眠: / 筋肉痛: / 明日:」をアプリが自動で書き込みます。',
+  'それ以外の自由記述は消さずに残されます。',
+].join('\n');
+
+// 他ユーザー配布用に、個人データを完全に消した複製を1つ作る。
+// 生成後に返る templateId を NEXT_PUBLIC_TEMPLATE_SPREADSHEET_ID に設定する。
+function makeTemplate() {
+  const file = DriveApp.getFileById(getSS().getId())
+                       .makeCopy('ボディメイク＆減量プロジェクト_テンプレート');
+  const copy = SpreadsheetApp.openById(file.getId());
+
+  copy.getSheets().forEach(function (sh) {
+    const name = sh.getName();
+
+    if (name === LOG_SHEET_NAME) {
+      // ヘッダー(1行目)だけ残し、2行目以降の実績を全削除
+      if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+      sh.getDataRange().clearNote();
+      return;
+    }
+
+    if (name === 'CLAUDE_MD_MASTER') {
+      sh.clear();
+      sh.clearNotes();
+      sh.getRange('A1').setValue(TEMPLATE_CLAUDE_MD);
+      return;
+    }
+
+    // 進捗＆予測ダッシュボード等: 数式・AI計画・実績すべて個人データなので全消去
+    sh.clear();
+    sh.clearNotes();
+  });
+
+  SpreadsheetApp.flush();
+
+  // ── 公開前チェック: 個人データが1セルも残っていないことを確認する ──
+  const residue = [];
+  copy.getSheets().forEach(function (sh) {
+    const name = sh.getName();
+    const rows = sh.getDataRange().getValues();
+    for (let r = 0; r < rows.length; r++) {
+      // メインシートのヘッダー行と CLAUDE_MD_MASTER の定型文だけは許可
+      if (name === LOG_SHEET_NAME && r === 0) continue;
+      if (name === 'CLAUDE_MD_MASTER' && r === 0) continue;
+      for (let c = 0; c < rows[r].length; c++) {
+        if (String(rows[r][c] || '').trim() !== '') {
+          residue.push(name + '!' + (r + 1) + ':' + (c + 1));
+        }
+      }
+    }
+  });
+
+  if (residue.length) {
+    // 消し残しがある状態では絶対に公開しない。複製ごと破棄する。
+    file.setTrashed(true);
+    return { error: 'テンプレートに個人データが残っていたため中止しました', residue: residue.slice(0, 20) };
+  }
+
+  // クリーンであることを確認できたのでリンク共有を有効化
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    templateId: file.getId(),
+    copyUrl:    'https://docs.google.com/spreadsheets/d/' + file.getId() + '/copy',
+    verified:   'no personal data',
+  };
 }
 
 // ── AI計画パース ─────────────────────────────────────────────────────────────
@@ -183,7 +273,7 @@ function findAiPlan(ss) {
 }
 
 function getDashboard() {
-  const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss       = getSS();
   const logSheet = getSheet(ss);
 
   const rows     = logSheet.getDataRange().getValues();
@@ -242,7 +332,7 @@ function buildMemo(existingMemo, payload) {
 }
 
 function appendLog(payload) {
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss    = getSS();
   const sheet = getSheet(ss);
 
   const dateStr = String(payload.date || toDateStr(new Date())).slice(0, 10);

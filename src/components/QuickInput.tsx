@@ -7,6 +7,7 @@ import { useCurrentUser } from "./AuthGate";
 
 interface Props {
   onSubmit: () => void;
+  gasEndpoint?: string;
 }
 
 const DOMS_OPTIONS  = ['胸', '背中', '脚', '肩', '腕', '腹筋', 'なし'] as const;
@@ -29,7 +30,7 @@ function sleepColor(h: string | null) {
   return 'text-red-400';
 }
 
-export default function QuickInput({ onSubmit }: Props) {
+export default function QuickInput({ onSubmit, gasEndpoint = '' }: Props) {
   const currentUser = useCurrentUser();
   const uid = currentUser?.uid ?? '';
 
@@ -116,6 +117,7 @@ export default function QuickInput({ onSubmit }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           uid,
+          gas:      gasEndpoint,
           date:     today,
           weight:   parseFloat(weight),
           steps:    steps ? parseInt(steps) : undefined,

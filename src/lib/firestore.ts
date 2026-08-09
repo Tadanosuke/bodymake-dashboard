@@ -37,6 +37,28 @@ function userDoc(uid: string, col: string, id: string) {
   return doc(db, 'users', uid, col, id);
 }
 
+// ─── ユーザー設定 (自分専用スプレッドシートの接続先) ────────────────────────
+
+export interface UserSettings {
+  gasEndpoint?: string;   // 各ユーザー自身の GAS ウェブアプリURL
+  updatedAt?:   string;
+}
+
+export async function getUserSettings(uid: string): Promise<UserSettings> {
+  const ref = userDoc(uid, 'settings', 'config');
+  if (!ref) return {};
+  try {
+    const snap = await getDoc(ref);
+    return snap.exists() ? (snap.data() as UserSettings) : {};
+  } catch { return {}; }
+}
+
+export async function saveUserSettings(uid: string, data: UserSettings): Promise<void> {
+  const ref = userDoc(uid, 'settings', 'config');
+  if (!ref) return;
+  await setDoc(ref, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
 // ─── Daily Logs ───────────────────────────────────────────────────────────────
 
 export async function getDailyLog(uid: string, date: string): Promise<DailyLogFS | null> {

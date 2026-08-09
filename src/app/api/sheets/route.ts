@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getRecentDailyLogs } from "@/lib/firestore";
 import type { DashboardData, WeightEntry, LogEntry } from "@/lib/types";
 
-const GAS_ENDPOINT = process.env.GAS_ENDPOINT;
+// 各ユーザーは自分のスプレッドシート(GASのURL)を設定画面から登録する。
+// 未設定なら Firestore のみで動作し、Gemini連携(カロリー/AI計画)は無効。
+function resolveEndpoint(param: string | null): string | null {
+  const url = (param || '').trim();
+  return /^https:\/\/script\.google\.com\//.test(url) ? url : null;
+}
 
 const START_WEIGHT      = 92.5;
 const START_DATE        = '2026-07-01';
@@ -23,6 +28,7 @@ function computeIdeal(dateStr: string): number {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const uid = searchParams.get('uid') ?? '';
+  const GAS_ENDPOINT = resolveEndpoint(searchParams.get('gas'));
 
   // 1. Fetch this user's Firebase daily logs
   const fsLogs = uid ? await getRecentDailyLogs(uid, 60) : [];

@@ -262,9 +262,10 @@ function ExercisePicker({ store, onSelect, onClose, addedNames }: PickerProps) {
 // ─── WorkoutTab (メイン) ──────────────────────────────────────────────────────
 interface Props {
   aiPlan?: AIPlan | null;
+  gasEndpoint?: string;
 }
 
-export default function WorkoutTab({ aiPlan }: Props) {
+export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
   const currentUser = useCurrentUser();
   const uid = currentUser?.uid ?? '';
 
@@ -382,7 +383,7 @@ export default function WorkoutTab({ aiPlan }: Props) {
       await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, date: selectedDate, workout: workoutStr }),
+        body: JSON.stringify({ uid, gas: gasEndpoint, date: selectedDate, workout: workoutStr }),
       });
 
       // Refresh stats from Firebase
