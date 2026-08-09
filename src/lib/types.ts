@@ -32,6 +32,14 @@ export interface TodayMetrics {
   steps:    { actual: number; target: number };
 }
 
+/** Gemini が指定した1セット分の内訳 */
+export interface AIPlanSet {
+  weight: number;
+  count:  number;   // ダンベルの個数 (2 = 両手)
+  reps:   number;
+  label:  string;   // アップ / メイン1 / バックオフ / パンプ など
+}
+
 export interface AIPlanExercise {
   name:          string;
   muscle:        string;
@@ -39,12 +47,15 @@ export interface AIPlanExercise {
   targetWeight:  number;
   targetReps:    number;
   restSeconds:   number;
-  setsDetail?:   string;  // "20kg×10, 40kg×8, 80kg×2" などGemini生成の詳細
+  setsDetail?:   string;       // "7.5kg*2*10(アップ), 24kg*2*8(メイン1)" 生テキスト
+  setList?:      AIPlanSet[];  // 上記をパースしたもの
 }
 
 export interface AIPlan {
   date:       string;
   rawText:    string;
+  split?:     string;   // Push / Pull / Legs など
+  place?:     string;   // 自宅 / 赤坂 など
   exercises?: AIPlanExercise[];
 }
 

@@ -77,6 +77,46 @@ export const PRESETS: Record<Muscle, string[]> = {
   ],
 };
 
+// ─── ユーザー追加のカスタム種目 (localStorage に永続化) ──────────────────────
+const CUSTOM_KEY = 'bodymake_custom_exercises';
+
+/** 部位ごとのカスタム種目一覧 */
+export function getCustomExercises(): Record<string, string[]> {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}') as Record<string, string[]>;
+  } catch { return {}; }
+}
+
+/** カスタム種目を追加。既に存在すれば何もしない */
+export function addCustomExercise(muscle: Muscle, name: string): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  try {
+    const all = getCustomExercises();
+    const list = all[muscle] || [];
+    if (list.includes(trimmed) || PRESETS[muscle].includes(trimmed)) return;
+    all[muscle] = [...list, trimmed];
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+export function removeCustomExercise(muscle: Muscle, name: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const all = getCustomExercises();
+    all[muscle] = (all[muscle] || []).filter(n => n !== name);
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+/** プリセット + カスタムを結合した、その部位で選べる全種目 */
+export function getExercisesFor(muscle: Muscle, store: Store): string[] {
+  const custom = getCustomExercises()[muscle] || [];
+  return [...filterByStore(PRESETS[muscle], store), ...custom];
+}
+
 export interface WorkoutSet {
   weight: string;
   reps:   string;

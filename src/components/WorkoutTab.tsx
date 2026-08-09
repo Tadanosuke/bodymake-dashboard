@@ -11,6 +11,7 @@ import {
   MUSCLES, PRESETS, filterByStore, getLastRecord,
   calc1RM, saveWorkoutHistory, saveWorkoutSession, formatWorkoutForSheet,
   getWorkoutDayCount, getMonthlyVolume, getTotalVolume, STORE_KEY,
+  getCustomExercises, addCustomExercise, removeCustomExercise,
   type Muscle, type ExerciseSession, type WorkoutSet, type Store,
 } from "@/lib/exercises";
 import {
@@ -175,7 +176,28 @@ interface PickerProps {
 function ExercisePicker({ store, onSelect, onClose, addedNames }: PickerProps) {
   const [muscle, setMuscle] = useState<Muscle>('胸');
   const [custom, setCustom] = useState('');
-  const available = filterByStore(PRESETS[muscle], store);
+  const [customMap, setCustomMap] = useState<Record<string, string[]>>({});
+
+  useEffect(() => { setCustomMap(getCustomExercises()); }, []);
+
+  const presets   = filterByStore(PRESETS[muscle], store);
+  const customs   = customMap[muscle] || [];
+  const available = [...presets, ...customs];
+
+  // 新しい種目を登録して即座に選択する
+  const commitCustom = () => {
+    const name = custom.trim();
+    if (!name) return;
+    addCustomExercise(muscle, name);
+    setCustomMap(getCustomExercises());
+    setCustom('');
+    onSelect(muscle, name);
+  };
+
+  const deleteCustom = (name: string) => {
+    removeCustomExercise(muscle, name);
+    setCustomMap(getCustomExercises());
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/80" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -195,25 +217,42 @@ function ExercisePicker({ store, onSelect, onClose, addedNames }: PickerProps) {
         </div>
         <div className="overflow-y-auto" style={{ maxHeight: '42vh' }}>
           {available.map(name => {
-            const added = addedNames.includes(name);
+            const added    = addedNames.includes(name);
+            const isCustom = customs.includes(name);
             return (
-              <button key={name} type="button" disabled={added}
-                onClick={() => onSelect(muscle, name)}
-                className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-red-900/15 text-left transition-colors ${
-                  added ? 'opacity-30 cursor-not-allowed' : 'hover:bg-red-900/20'
-                }`}>
-                <span className="text-sm text-red-100">{name}</span>
-                {added ? <span className="text-[10px] text-red-800">追加済み</span> : <ChevronRight size={14} className="text-red-700" />}
-              </button>
+              <div key={name} className={`w-full flex items-center border-b border-red-900/15 transition-colors ${
+                added ? 'opacity-30' : 'hover:bg-red-900/20'
+              }`}>
+                <button type="button" disabled={added}
+                  onClick={() => onSelect(muscle, name)}
+                  className={`flex-1 flex items-center justify-between px-5 py-3.5 text-left ${added ? 'cursor-not-allowed' : ''}`}>
+                  <span className="text-sm text-red-100 flex items-center gap-2">
+                    {name}
+                    {isCustom && <span className="text-[9px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">自作</span>}
+                  </span>
+                  {added ? <span className="text-[10px] text-red-800">追加済み</span> : <ChevronRight size={14} className="text-red-700" />}
+                </button>
+                {isCustom && (
+                  <button type="button" onClick={() => deleteCustom(name)}
+                    className="px-4 text-red-900 hover:text-red-400 shrink-0" title="この種目を削除">
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
-        <div className="px-4 py-3 border-t border-red-900/30 flex gap-2">
-          <input type="text" value={custom} onChange={e => setCustom(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && custom.trim()) { onSelect(muscle, custom.trim()); setCustom(''); } }}
-            placeholder="カスタム種目..." className="flex-1 bg-black/40 border border-red-900/40 rounded-xl px-3 py-2.5 text-sm text-red-100 placeholder-red-900 outline-none" />
-          <button type="button" onClick={() => { if (custom.trim()) { onSelect(muscle, custom.trim()); setCustom(''); } }}
-            className="bg-red-700 text-white rounded-xl px-4 py-2.5 text-sm font-bold">追加</button>
+        <div className="px-4 py-3 border-t border-red-900/30">
+          <p className="text-[10px] text-red-400/60 mb-2">
+            「{muscle}」に自分の種目を追加（次回以降も一覧に残ります）
+          </p>
+          <div className="flex gap-2">
+            <input type="text" value={custom} onChange={e => setCustom(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commitCustom(); }}
+              placeholder="種目名を入力..." className="flex-1 bg-black/40 border border-red-900/40 rounded-xl px-3 py-2.5 text-sm text-red-100 placeholder-red-900 outline-none focus:border-red-500/60" />
+            <button type="button" onClick={commitCustom} disabled={!custom.trim()}
+              className="bg-red-700 text-white rounded-xl px-4 py-2.5 text-sm font-bold disabled:opacity-40">追加</button>
+          </div>
         </div>
       </div>
     </div>
@@ -239,6 +278,7 @@ export default function WorkoutTab({ aiPlan }: Props) {
   const [timerOpen,    setTimerOpen]    = useState(false);
   const [timerSecs,    setTimerSecs]    = useState(90);
   const [status,       setStatus]       = useState<'idle'|'loading'|'success'|'error'>('idle');
+  const [planRests,    setPlanRests]    = useState<Record<string, number>>({});
 
   // Stats (from localStorage)
   const [dayCount,    setDayCount]    = useState(0);
@@ -278,19 +318,39 @@ export default function WorkoutTab({ aiPlan }: Props) {
     setPickerOpen(false);
   };
 
+  // AI計画の種目名から部位を推定（Geminiは Push/Pull/Legs 単位でしか部位を返さないため）
+  const guessMuscle = (name: string): Muscle => {
+    for (const m of MUSCLES) {
+      if (PRESETS[m].some(p => name.includes(p) || p.includes(name))) return m;
+    }
+    if (/ベンチ|チェスト|プレス|ペック/.test(name)) return '胸';
+    if (/ロー|ラット|プル|デッド|チンニング/.test(name)) return '背中';
+    if (/スクワット|レッグ|カーフ/.test(name))          return '脚';
+    if (/ショルダー|サイドレイズ|アーノルド/.test(name)) return '肩';
+    if (/カール|トライセップス|フレンチ|エクステンション/.test(name)) return '腕';
+    return '胸';
+  };
+
   const applyAIPlan = () => {
     if (!aiPlan?.exercises) return;
     const newExs: ExerciseSession[] = aiPlan.exercises.map(ex => ({
       id: `${Date.now()}_${Math.random()}`,
-      muscle: (ex.muscle as Muscle) || '胸',
+      muscle: guessMuscle(ex.name),
       name: ex.name,
-      sets: Array.from({ length: ex.sets }, () => ({
-        weight: String(ex.targetWeight),
-        reps:   String(ex.targetReps),
-      })),
+      // Gemini がセットごとに重量・回数を指定していればそれを1セットずつ反映
+      sets: ex.setList && ex.setList.length > 0
+        ? ex.setList.map(s => ({ weight: String(s.weight), reps: String(s.reps) }))
+        : Array.from({ length: ex.sets }, () => ({
+            weight: String(ex.targetWeight),
+            reps:   String(ex.targetReps),
+          })),
       lastRecord: getLastRecord(ex.name),
     }));
     setExercises(newExs);
+    // 種目ごとのレスト秒を記録しておく
+    const rests: Record<string, number> = {};
+    aiPlan.exercises.forEach(ex => { rests[ex.name] = ex.restSeconds; });
+    setPlanRests(rests);
   };
 
   const removeExercise = (id: string) => setExercises(p => p.filter(e => e.id !== id));
@@ -394,12 +454,49 @@ export default function WorkoutTab({ aiPlan }: Props) {
         {/* AI Plan */}
         {aiPlan && (
           <div className="bg-black/40 border border-yellow-600/30 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Zap size={14} className="text-yellow-400" />
               <span className="text-xs font-bold text-yellow-300">Gemini AI 計画</span>
               <span className="text-[10px] text-yellow-600">{aiPlan.date}</span>
+              {aiPlan.split && (
+                <span className="text-[10px] bg-yellow-600/20 border border-yellow-600/40 text-yellow-300 px-2 py-0.5 rounded-full font-bold">
+                  {aiPlan.split}
+                </span>
+              )}
+              {aiPlan.place && (
+                <span className="text-[10px] bg-red-800/40 border border-red-700/30 text-red-300 px-2 py-0.5 rounded-full">
+                  {aiPlan.place}
+                </span>
+              )}
             </div>
-            <p className="text-xs text-red-200/70 leading-relaxed whitespace-pre-line mb-3">{aiPlan.rawText}</p>
+
+            {aiPlan.exercises && aiPlan.exercises.length > 0 ? (
+              <div className="space-y-2 mb-3">
+                {aiPlan.exercises.map((ex, i) => (
+                  <div key={i} className="bg-black/40 border border-yellow-900/20 rounded-xl p-2.5">
+                    <div className="flex items-baseline justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold text-yellow-100 leading-tight">{ex.name}</span>
+                      <span className="text-[9px] text-yellow-600/80 shrink-0">レスト{ex.restSeconds}秒</span>
+                    </div>
+                    {ex.setList && ex.setList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {ex.setList.map((s, j) => (
+                          <span key={j} className="text-[10px] bg-black/50 border border-red-900/30 text-red-200/80 px-1.5 py-0.5 rounded">
+                            {s.weight}kg{s.count > 1 ? `×${s.count}` : ''} × {s.reps}回
+                            {s.label && <span className="text-yellow-600/70 ml-1">{s.label}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-red-200/60">{ex.setsDetail}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-red-200/70 leading-relaxed whitespace-pre-line mb-3">{aiPlan.rawText}</p>
+            )}
+
             {aiPlan.exercises && (
               <button type="button" onClick={applyAIPlan}
                 className="w-full py-2.5 bg-yellow-600 hover:bg-yellow-500 text-black font-black text-sm rounded-xl active:scale-95 transition-all">
@@ -432,7 +529,7 @@ export default function WorkoutTab({ aiPlan }: Props) {
             onRemoveSet={i => removeSet(ex.id, i)}
             onRemoveExercise={() => removeExercise(ex.id)}
             onSetDone={openTimer}
-            restDefault={REST_DEFAULTS[ex.name] ?? 90}
+            restDefault={planRests[ex.name] ?? REST_DEFAULTS[ex.name] ?? 90}
           />
         ))}
 

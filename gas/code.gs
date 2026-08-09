@@ -39,6 +39,7 @@ function doGet(e) {
     if (action === 'getDashboard') return respond(getDashboard());
     if (action === 'listSheets')  return respond(listSheets());
     if (action === 'getClaude')   return respond(getClaude());
+    if (action === 'dumpSheet')   return respond(dumpSheet(e.parameter.name));
     return respond({ error: 'Unknown action: ' + action });
   } catch (err) {
     return respond({ error: String(err), stack: err.stack });
@@ -96,6 +97,91 @@ function getClaude() {
   return { content: String(sheet.getRange('A1').getValue() || '') };
 }
 
+// ── AI計画パース ─────────────────────────────────────────────────────────────
+// 『進捗＆予測ダッシュボード』のセルを全走査し「AI次回計画メニュー (YYYY/MM/DD 部位 場所)」
+// という見出しを見つけ、その直下の連続行を種目として読む。
+// 種目行の形式: 「種目名: 7.5kg*2*10(アップ), 24kg*2*8(メイン1) | レスト2.5分」
+function parseRest(text) {
+  const m = String(text).match(/レスト\s*([\d.]+)\s*(分|秒)/);
+  if (!m) return 90;
+  const n = parseFloat(m[1]);
+  return m[2] === '分' ? Math.round(n * 60) : Math.round(n);
+}
+
+function parseSetsDetail(text) {
+  // "7.5kg*2*10(アップ)" → { weight: 7.5, count: 2, reps: 10, label: 'アップ' }
+  const out = [];
+  String(text).split(',').forEach(function (chunk) {
+    const m = chunk.match(/([\d.]+)\s*kg\s*\*\s*(\d+)\s*\*\s*(\d+)\s*(?:\(([^)]*)\))?/);
+    if (m) {
+      out.push({
+        weight: parseFloat(m[1]),
+        count:  parseInt(m[2]),
+        reps:   parseInt(m[3]),
+        label:  (m[4] || '').trim(),
+      });
+    }
+  });
+  return out;
+}
+
+function findAiPlan(ss) {
+  const sheets = ss.getSheets();
+  for (let s = 0; s < sheets.length; s++) {
+    const rows = sheets[s].getDataRange().getValues();
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = 0; j < rows[i].length; j++) {
+        const cell = String(rows[i][j] || '');
+        const head = cell.match(/AI次回計画メニュー\s*[（(]\s*(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s*([^)）]*)[)）]/);
+        if (!head) continue;
+
+        const date = head[1] + '-' + ('0' + head[2]).slice(-2) + '-' + ('0' + head[3]).slice(-2);
+        const meta = (head[4] || '').trim().split(/\s+/);   // ["Push", "自宅"]
+        const split = meta[0] || '';
+        const place = meta[1] || '';
+
+        // 見出しの直下、同じ列を下に読む（空セルで終了）
+        const exercises = [];
+        for (let r = i + 1; r < rows.length; r++) {
+          const line = String(rows[r][j] || '').trim();
+          if (!line) break;
+          const ci = line.indexOf(':');
+          if (ci < 0) continue;
+          const name = line.slice(0, ci).trim();
+          const body = line.slice(ci + 1);
+          const setsPart = body.split('|')[0];
+          const detail   = parseSetsDetail(setsPart);
+          const working  = detail.filter(function (d) { return !/アップ/.test(d.label); });
+          const heaviest = detail.reduce(function (a, b) { return b.weight > a ? b.weight : a; }, 0);
+          exercises.push({
+            muscle:       split,
+            name:         name,
+            sets:         detail.length || 1,
+            targetWeight: heaviest,
+            targetReps:   working.length ? working[0].reps : (detail.length ? detail[0].reps : 0),
+            restSeconds:  parseRest(body),
+            setsDetail:   setsPart.trim(),
+            setList:      detail,
+          });
+        }
+
+        if (exercises.length) {
+          return {
+            date: date,
+            split: split,
+            place: place,
+            exercises: exercises,
+            rawText: exercises.map(function (e) {
+              return e.name + ': ' + e.setsDetail + ' | レスト' + e.restSeconds + '秒';
+            }).join('\n'),
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function getDashboard() {
   const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
   const logSheet = getSheet(ss);
@@ -114,49 +200,45 @@ function getDashboard() {
       carbs:    parseFloat(row[C.CARBS])   || 0,
       steps:    parseInt(row[C.STEPS])     || 0,
       workout:  String(row[C.WORKOUT] || ''),
+      calBurn:  parseInt(row[C.CAL_BURN])  || 0,
+      cardio:   String(row[C.CARDIO] || ''),
+      memo:     String(row[C.MEMO] || ''),
     }))
     .filter(l => l.date && /^\d{4}-\d{2}-\d{2}$/.test(l.date) && (l.weight > 0 || l.calories > 0))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 60);
 
-  // ── M-R: AI計画 ───────────────────────────────────────────────────────────
-  // 各行: M=日付, N=部位, O=種目, P=目標重量, Q=セット詳細, R=レスト秒
+  // ── AI計画 (全シート走査で見出しを探す) ───────────────────────────────────
   let aiPlan = null;
   try {
-    const aiRows = dataRows.filter(row => row[C.AI_NAME] && String(row[C.AI_NAME]).trim());
-    if (aiRows.length > 0) {
-      aiRows.sort((a, b) => toDateStr(b[C.AI_DATE]).localeCompare(toDateStr(a[C.AI_DATE])));
-      const latestDate = toDateStr(aiRows[0][C.AI_DATE]) || toDateStr(new Date());
-      const dayRows    = aiRows.filter(row => toDateStr(row[C.AI_DATE]) === latestDate);
-
-      const exercises = dayRows.map(row => {
-        const setsDetail = String(row[C.AI_SETS] || '');
-        // セット数: カンマ区切りのアイテム数、または "Xセット" のパース
-        const setCount = setsDetail.split(',').filter(s => s.trim()).length || 1;
-        return {
-          muscle:       String(row[C.AI_MUS]  || ''),
-          name:         String(row[C.AI_NAME] || ''),
-          targetWeight: parseFloat(row[C.AI_WT])   || 0,
-          targetReps:   0,
-          sets:         setCount,
-          restSeconds:  parseInt(row[C.AI_REST])    || 60,
-          setsDetail,   // "20kg×10, 40kg×8, 80kg×2" 形式の生テキスト
-        };
-      }).filter(e => e.name);
-
-      if (exercises.length > 0) {
-        aiPlan = {
-          date: latestDate,
-          exercises,
-          rawText: exercises.map(e =>
-            `[${e.muscle}] ${e.name}  ${e.setsDetail || e.targetWeight + 'kg'}  休憩${e.restSeconds}秒`
-          ).join('\n'),
-        };
-      }
-    }
+    aiPlan = findAiPlan(ss);
   } catch (_) {}
 
   return { logs, aiPlan };
+}
+
+// K列(メモ・コンディション)に睡眠/筋肉痛/明日の予定を構造化して埋め込む。
+// Gemini が自由記述した部分は温存し、アプリ管轄のセグメントのみ差し替える。
+const APP_KEYS = ['睡眠', '筋肉痛', '明日'];
+
+function buildMemo(existingMemo, payload) {
+  const kept = String(existingMemo || '')
+    .split(' / ')
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) {
+      if (!s) return false;
+      for (let i = 0; i < APP_KEYS.length; i++) {
+        if (s.indexOf(APP_KEYS[i] + ':') === 0) return false;  // アプリ管轄は捨てる
+      }
+      return true;  // Gemini の自由記述は残す
+    });
+
+  const segs = [];
+  if (payload.sleep)    segs.push('睡眠: '   + payload.sleep);
+  if (payload.doms)     segs.push('筋肉痛: ' + payload.doms);
+  if (payload.tomorrow) segs.push('明日: '   + payload.tomorrow);
+
+  return segs.concat(kept).join(' / ');
 }
 
 function appendLog(payload) {
@@ -184,7 +266,7 @@ function appendLog(payload) {
       parseInt(payload.steps) || ex[C.STEPS] || '', // H 歩数
       payload.workout || ex[C.WORKOUT] || '',        // I 筋トレ
       ex[C.CARDIO]   || '',                         // J その他運動 (保持)
-      ex[C.MEMO]     || '',                         // K メモ (保持)
+      buildMemo(ex[C.MEMO], payload),               // K 睡眠/筋肉痛/明日 + Gemini記述
     ];
     sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
     return { success: true, action: 'updated', row: targetRow };
@@ -196,7 +278,7 @@ function appendLog(payload) {
       parseInt(payload.steps)  || '',               // H 歩数
       payload.workout          || '',               // I 筋トレ
       '',                                           // J その他
-      '',                                           // K メモ
+      buildMemo('', payload),                       // K 睡眠/筋肉痛/明日
     ];
     sheet.appendRow(rowData);
     return { success: true, action: 'appended' };

@@ -67,26 +67,40 @@ export default function QuickInput({ onSubmit }: Props) {
 
   const [todayLog, setTodayLog] = useState<Awaited<ReturnType<typeof getDailyLog>>>(null);
 
+  // 入力済みの値をフォームへ復元する（体重が無くても部分的な入力は必ず戻す）
+  const hydrate = (log: Awaited<ReturnType<typeof getDailyLog>>) => {
+    if (!log) return;
+    if (log.weight)   setWeight(String(log.weight));
+    if (log.steps)    setSteps(String(log.steps));
+    if (log.tomorrow) setTomorrowTag(log.tomorrow);
+    if (log.doms)     setDoms(log.doms === 'なし' ? ['なし'] : log.doms.split(', '));
+    if (log.sleep) {
+      const m = log.sleep.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+      if (m) { setBedtime(m[1]); setWaketime(m[2]); }
+    }
+  };
+
   useEffect(() => {
     if (!uid) { setPageState('form'); return; }
-    const timer = setTimeout(() => setPageState('form'), 3000);
-    getDailyLog(uid, today).then(log => {
-      clearTimeout(timer);
-      setTodayLog(log);
-      if (log?.weight) {
-        setWeight(String(log.weight));
-        if (log.steps)  setSteps(String(log.steps));
-        if (log.doms && log.doms !== 'なし') setDoms(log.doms.split(', '));
-        if (log.tomorrow) setTomorrowTag(log.tomorrow);
-        if (log.sleep) {
-          const m = log.sleep.match(/\((\d{2}:\d{2})-(\d{2}:\d{2})\)/);
-          if (m) { setBedtime(m[1]); setWaketime(m[2]); }
-        }
-        setPageState('view');
-      } else {
+    let settled = false;
+    // Firestore が遅いときは先にフォームを出す。結果が届いたら値を流し込む。
+    const timer = setTimeout(() => { if (!settled) setPageState('form'); }, 3000);
+
+    getDailyLog(uid, today)
+      .then(log => {
+        settled = true;
+        clearTimeout(timer);
+        setTodayLog(log);
+        hydrate(log);
+        setPageState(log?.weight ? 'view' : 'form');
+      })
+      .catch(() => {
+        settled = true;
+        clearTimeout(timer);
         setPageState('form');
-      }
-    }).catch(() => { clearTimeout(timer); setPageState('form'); });
+      });
+
+    return () => clearTimeout(timer);
   }, [today, uid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,8 +125,19 @@ export default function QuickInput({ onSubmit }: Props) {
         }),
       });
 
+      // 保存した内容を即座に画面へ反映（その日のうちは値が残る）
+      setTodayLog({
+        date:      today,
+        weight:    parseFloat(weight),
+        steps:     steps ? parseInt(steps) : undefined,
+        sleep:     sleepStr  || undefined,
+        doms:      domsStr   || undefined,
+        tomorrow:  tomorrowTag || undefined,
+        updatedAt: new Date().toISOString(),
+      });
+
       setStatus('success');
-      setTimeout(() => { setStatus('idle'); onSubmit(); }, 1500);
+      setTimeout(() => { setStatus('idle'); setPageState('view'); onSubmit(); }, 1500);
     } catch {
       setStatus('error');
       setErrorMsg('送信に失敗しました。もう一度お試しください。');
