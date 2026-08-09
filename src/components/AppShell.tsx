@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Home, PenLine, Dumbbell, History, LogOut } from "lucide-react";
+import { Home, PenLine, Dumbbell, History, LogOut, RefreshCw } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import AuthGate, { useCurrentUser } from "./AuthGate";
@@ -20,26 +20,44 @@ function AppShellInner() {
   const currentUser = useCurrentUser();
   const uid = currentUser?.uid ?? '';
 
-  const [activeTab, setActiveTab] = useState<Tab>("home");
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [activeTab,   setActiveTab]   = useState<Tab>("home");
+  const [data,        setData]        = useState<DashboardData | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [refreshKey,  setRefreshKey]  = useState(0);
+
+  const fetchData = async (uid: string, silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const res = await fetch(`/api/sheets?uid=${uid}`);
+      const json = await res.json();
+      setData(json);
+    } catch {
+      console.error("Failed to load data");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
+    if (!uid) { setLoading(false); return; }
+    fetchData(uid);
+  }, [uid]);
+
+  // Manual refresh trigger
+  useEffect(() => {
+    if (!uid || refreshKey === 0) return;
+    fetchData(uid, true);
+  }, [refreshKey]);
+
+  // Auto-refresh every 60 seconds (silent)
+  useEffect(() => {
     if (!uid) return;
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/sheets?uid=${uid}`);
-        const json = await res.json();
-        setData(json);
-      } catch {
-        console.error("Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [refreshKey, uid]);
+    const id = setInterval(() => fetchData(uid, true), 60_000);
+    return () => clearInterval(id);
+  }, [uid]);
 
   const handleLogSubmit = () => {
     setRefreshKey((k) => k + 1);
@@ -105,6 +123,17 @@ function AppShellInner() {
               </button>
             ))}
           </div>
+
+          {/* Refresh */}
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            disabled={refreshing}
+            className="flex flex-col items-center gap-1 py-2 px-3 text-slate-600 hover:text-slate-400 transition-colors shrink-0 disabled:opacity-40"
+            title="更新"
+          >
+            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            <span className="text-[9px]">更新</span>
+          </button>
 
           {/* Logout */}
           {auth && (

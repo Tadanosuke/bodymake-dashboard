@@ -1,9 +1,9 @@
-// Google Apps Script — ボディメイクダッシュボード連携 v3
+// Google Apps Script — ボディメイクダッシュボード連携 v4
 // 1. このファイルの内容をApps Scriptエディタに貼り付け（全置換）
 // 2. 「デプロイ」→「デプロイを管理」→既存のデプロイを「編集」→「バージョン: 新しいバージョン」で更新
 
 const SPREADSHEET_ID = '1wJefKcr0S2hPcI9s7e1c89kWabnYpgQa0eg315pxtlE';
-const LOG_SHEET_NAME = 'ログ';
+const LOG_SHEET_NAME = 'Sheet1';
 
 // ========== ルーティング ==========
 
@@ -12,6 +12,7 @@ function doGet(e) {
   try {
     if (action === 'getDashboard') return respond(getDashboard());
     if (action === 'listSheets')  return respond(listSheets());
+    if (action === 'getClaude')   return respond(getClaude());
     return respond({ error: 'Unknown action: ' + action });
   } catch (err) {
     return respond({ error: String(err), stack: err.stack });
@@ -65,9 +66,19 @@ function listSheets() {
   return { sheets: ss.getSheets().map(s => ({ name: s.getName(), rows: s.getLastRow() })) };
 }
 
+// CLAUDE_MD_MASTERタブのA1セルを返す
+function getClaude() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('CLAUDE_MD_MASTER');
+  if (!sheet) return { error: 'CLAUDE_MD_MASTER sheet not found' };
+  const content = sheet.getRange('A1').getValue();
+  return { content: String(content || '') };
+}
+
 function getDashboard() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
+  // Sheet1を優先、なければ最もデータの多いシート
   let logSheet = ss.getSheetByName(LOG_SHEET_NAME);
   if (!logSheet) {
     const sheets = ss.getSheets();
@@ -77,7 +88,7 @@ function getDashboard() {
   const rows = logSheet ? logSheet.getDataRange().getValues() : [];
   const dataRows = rows.length > 1 ? rows.slice(1) : rows;
 
-  // カロリーデータを返す（体重がなくてもカロリーがあれば含む）
+  // A-K列: 日次ログデータ
   const logs = dataRows
     .map(row => ({
       date:     toDateStr(row[0]),
@@ -93,23 +104,53 @@ function getDashboard() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 60);
 
-  const now = new Date();
-  const daysTo = (targetStr) => Math.ceil((new Date(targetStr) - now) / 86400000);
-
-  // AI計画シートを探す（あれば返す）
+  // M-R列 (index 12-17): AI計画データ
+  // 部位(M), 種目(N), 目標重量(O), 目標回数(P), セット数(Q), レスト秒(R)
   let aiPlan = null;
   try {
-    const aiSheet = ss.getSheetByName('AI計画') || ss.getSheetByName('AI次回計画');
-    if (aiSheet) {
-      const aiData = aiSheet.getDataRange().getValues();
-      if (aiData.length > 1) {
+    const aiRows = dataRows.filter(row => row[13] && String(row[13]).trim());
+    if (aiRows.length > 0) {
+      // 最新のAI計画行を取得（日付順でソート）
+      aiRows.sort((a, b) => toDateStr(b[0]).localeCompare(toDateStr(a[0])));
+      const latestDate = toDateStr(aiRows[0][0]) || toDateStr(new Date());
+      const sameDateRows = aiRows.filter(row => toDateStr(row[0]) === latestDate);
+
+      const exercises = sameDateRows.map(row => ({
+        muscle:       String(row[12] || ''),
+        name:         String(row[13] || ''),
+        targetWeight: parseFloat(row[14]) || 0,
+        targetReps:   parseInt(row[15])   || 0,
+        sets:         parseInt(row[16])   || 0,
+        restSeconds:  parseInt(row[17])   || 60,
+      })).filter(e => e.name);
+
+      if (exercises.length > 0) {
         aiPlan = {
-          date: toDateStr(aiData[1][0]) || toDateStr(new Date()),
-          rawText: String(aiData[1][1] || ''),
+          date: latestDate,
+          exercises,
+          rawText: exercises.map(e =>
+            `[${e.muscle}] ${e.name} ${e.targetWeight}kg × ${e.targetReps}回 × ${e.sets}セット (休憩${e.restSeconds}秒)`
+          ).join('\n'),
         };
       }
     }
   } catch (_) {}
+
+  // AI計画が M-R になければ旧来の専用シートから読む (後方互換)
+  if (!aiPlan) {
+    try {
+      const aiSheet = ss.getSheetByName('AI計画') || ss.getSheetByName('AI次回計画');
+      if (aiSheet) {
+        const aiData = aiSheet.getDataRange().getValues();
+        if (aiData.length > 1) {
+          aiPlan = {
+            date: toDateStr(aiData[1][0]) || toDateStr(new Date()),
+            rawText: String(aiData[1][1] || ''),
+          };
+        }
+      }
+    } catch (_) {}
+  }
 
   return { logs, aiPlan };
 }

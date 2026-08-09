@@ -69,7 +69,9 @@ export default function QuickInput({ onSubmit }: Props) {
 
   useEffect(() => {
     if (!uid) { setPageState('form'); return; }
+    const timer = setTimeout(() => setPageState('form'), 3000);
     getDailyLog(uid, today).then(log => {
+      clearTimeout(timer);
       setTodayLog(log);
       if (log?.weight) {
         setWeight(String(log.weight));
@@ -84,7 +86,7 @@ export default function QuickInput({ onSubmit }: Props) {
       } else {
         setPageState('form');
       }
-    });
+    }).catch(() => { clearTimeout(timer); setPageState('form'); });
   }, [today, uid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
