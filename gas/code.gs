@@ -3,7 +3,7 @@
 // 2. 「デプロイ」→「デプロイを管理」→既存のデプロイを「編集」→「バージョン: 新しいバージョン」で更新
 
 const SPREADSHEET_ID = '1wJefKcr0S2hPcI9s7e1c89kWabnYpgQa0eg315pxtlE';
-const LOG_SHEET_NAME = 'Sheet1';
+const LOG_SHEET_NAME = 'ボディメイク＆減量プロジェクト_総合管理シート';
 
 // ── Sheet1 列インデックス (0-based) ──────────────────────────────────────────
 // A(0)=日付  B(1)=体重  C(2)=摂取cal  D(3)=P  E(4)=F  F(5)=C
