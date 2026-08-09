@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { CheckCircle2, AlertCircle, Send, Footprints, Moon, Sun, Pencil } from "lucide-react";
-import { getDailyLog } from "@/lib/firestore";
+import { getDailyLog, saveDailyLog } from "@/lib/firestore";
 import { useCurrentUser } from "./AuthGate";
 
 interface Props {
@@ -112,19 +112,26 @@ export default function QuickInput({ onSubmit, gasEndpoint = '' }: Props) {
       const sleepStr = sleepHours ? `${sleepHours}時間 (${bedtime}-${waketime})` : '';
       const domsStr  = doms.length > 0 ? doms.join(', ') : '';
 
+      const payload = {
+        date:     today,
+        weight:   parseFloat(weight),
+        steps:    steps ? parseInt(steps) : undefined,
+        sleep:    sleepStr    || undefined,
+        doms:     domsStr     || undefined,
+        tomorrow: tomorrowTag || undefined,
+      };
+
+      // 端末とFirestoreへの保存はブラウザ側で行う（サーバーからは認証が通らない）
+      if (uid) {
+        await saveDailyLog(uid, today, Object.fromEntries(
+          Object.entries(payload).filter(([, v]) => v !== undefined),
+        ));
+      }
+
       await fetch('/api/log', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid,
-          gas:      gasEndpoint,
-          date:     today,
-          weight:   parseFloat(weight),
-          steps:    steps ? parseInt(steps) : undefined,
-          sleep:    sleepStr   || undefined,
-          doms:     domsStr    || undefined,
-          tomorrow: tomorrowTag || undefined,
-        }),
+        body: JSON.stringify({ ...payload, gas: gasEndpoint }),
       });
 
       // 保存した内容を即座に画面へ反映（その日のうちは値が残る）

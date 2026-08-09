@@ -170,17 +170,45 @@ export function calc1RM(weight: string, reps: string): string {
   return (w * (1 + r / 30)).toFixed(1);
 }
 
+/**
+ * スプレッドシート I列 に書く文字列。
+ * 形式: `[胸]ベンチプレス: 60kg×10回, 65kg×8回 / [腕]アームカール: 12kg×12回 ｜ 計3セット/負荷量1996kg`
+ * `回` を必ず付けるのは、旧形式（`1.60kg×10` のようにセット番号が前置され、
+ * 重量の小数点と区別が付かない）と機械的に見分けるため。parseSheetWorkout と対。
+ */
 export function formatWorkoutForSheet(exercises: ExerciseSession[]): string {
-  return exercises
-    .filter(ex => ex.sets.some(s => s.weight || s.reps))
-    .map(ex => {
-      const sets = ex.sets
-        .filter(s => s.weight || s.reps)
-        .map((s, i) => `${i + 1}.${s.weight || 0}kg×${s.reps || 0}`)
-        .join(', ');
-      return `[${ex.muscle}]${ex.name}: ${sets}`;
-    })
-    .join(' / ');
+  const valid = exercises.filter(ex => ex.sets.some(s => s.weight && s.reps));
+  if (valid.length === 0) return '';
+
+  const body = valid.map(ex => {
+    const sets = ex.sets
+      .filter(s => s.weight && s.reps)
+      .map(s => `${parseFloat(s.weight)}kg×${parseInt(s.reps)}回`)
+      .join(', ');
+    return `[${ex.muscle}]${ex.name}: ${sets}`;
+  }).join(' / ');
+
+  const setCount = valid.reduce((n, ex) => n + ex.sets.filter(s => s.weight && s.reps).length, 0);
+  const volume   = valid.reduce((sum, ex) =>
+    sum + ex.sets.reduce((s2, s) => s2 + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0), 0);
+
+  return `${body} ｜ 計${setCount}セット/負荷量${Math.round(volume)}kg`;
+}
+
+/** 種目名から部位を推定する（Gemini は Push/Pull/Legs 単位でしか部位を返さないため） */
+export function guessMuscle(name: string): Muscle {
+  for (const m of MUSCLES) {
+    if (PRESETS[m].some(p => name.includes(p) || p.includes(name))) return m;
+  }
+  if (/ベンチ|チェスト|プレス|ペック/.test(name))                     return '胸';
+  if (/ロー|ラット|プル|デッド|チンニング/.test(name))                return '背中';
+  if (/スクワット|レッグ|カーフ/.test(name))                          return '脚';
+  if (/ショルダー|サイドレイズ|アーノルド/.test(name))                return '肩';
+  if (/カール|トライセップス|トライセプス|フレンチ|エクステンション/.test(name)) return '腕';
+  if (/クランチ|プランク|ツイスト|アブ/.test(name))                   return '腹筋';
+  if (/ヒップ|アダクター|アブダクション/.test(name))                  return 'お尻';
+  if (/ウォーキング|ランニング|バイク|HIIT/.test(name))               return '有酸素';
+  return '胸';
 }
 
 // ─── セッション履歴 (カレンダー・月間負荷量用) ──────────────────────────────

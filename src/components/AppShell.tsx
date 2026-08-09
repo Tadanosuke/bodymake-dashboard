@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Home, PenLine, Dumbbell, History, Settings as SettingsIcon, RefreshCw } from "lucide-react";
+import { Home, PenLine, Dumbbell, Settings as SettingsIcon, RefreshCw } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getUserSettings, getRecentDailyLogs } from "@/lib/firestore";
@@ -10,13 +10,13 @@ import { buildDashboard, type GasResponse } from "@/lib/dashboard";
 import AuthGate, { useCurrentUser } from "./AuthGate";
 import Dashboard from "./Dashboard";
 import QuickInput from "./QuickInput";
-import LogView from "./LogView";
 import Settings from "./Settings";
 import type { DashboardData } from "@/lib/types";
 
 const WorkoutTab = dynamic(() => import("./WorkoutTab"), { ssr: false });
 
-type Tab = "home" | "today" | "workout" | "history" | "settings";
+// 履歴タブは廃止。過去の記録は「筋トレ」タブに統合した。
+type Tab = "home" | "today" | "workout" | "settings";
 
 // Firestore の client SDK はオフライン時に reject せず無限に待つことがあるので、
 // 必ず上限を設けてフォールバック値で先に進む。
@@ -120,7 +120,6 @@ function AppShellInner() {
     { id: "home",    label: "ホーム",  icon: <Home    size={22} /> },
     { id: "today",   label: "今日",    icon: <PenLine size={22} /> },
     { id: "workout", label: "筋トレ",  icon: <Dumbbell size={22} /> },
-    { id: "history", label: "履歴",    icon: <History size={22} /> },
     { id: "settings", label: "設定",   icon: <SettingsIcon size={22} /> },
   ];
 
@@ -140,9 +139,8 @@ function AppShellInner() {
           data ? <Dashboard data={data} /> : <LoadingPane />
         )}
         {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} gasEndpoint={gasEndpoint ?? ''} />}
-        {activeTab === "workout" && <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} />}
-        {activeTab === "history" && (
-          data ? <LogView logs={data.logs} /> : <LoadingPane />
+        {activeTab === "workout" && (
+          <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} logs={data?.logs ?? []} />
         )}
         {activeTab === "settings" && <Settings onSaved={handleSettingsSaved} onLogout={handleLogout} />}
       </div>

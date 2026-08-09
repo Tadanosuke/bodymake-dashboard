@@ -1,24 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Plus, X, Dumbbell, Trash2, ChevronDown, ChevronRight,
-  Timer, Zap, CalendarDays, Trophy, Send,
+  Zap, CalendarDays, Trophy, Send, Pencil, FileSpreadsheet, Smartphone,
 } from "lucide-react";
 import RestTimer from "./RestTimer";
 import {
-  MUSCLES, PRESETS, filterByStore, getLastRecord,
+  MUSCLES, PRESETS, filterByStore, getLastRecord, guessMuscle,
   calc1RM, saveWorkoutHistory, saveWorkoutSession, formatWorkoutForSheet,
-  getWorkoutDayCount, getMonthlyVolume, getTotalVolume, STORE_KEY,
-  getCustomExercises, addCustomExercise, removeCustomExercise,
+  STORE_KEY, getCustomExercises, addCustomExercise, removeCustomExercise,
   type Muscle, type ExerciseSession, type WorkoutSet, type Store,
 } from "@/lib/exercises";
 import {
-  saveWorkoutSessionFS, saveWorkoutHistoryFS,
-  getWorkoutDatesFS, getMonthlyVolumeFS, getTotalVolumeFS,
+  saveWorkoutSessionFS, saveWorkoutHistoryFS, saveDailyLog,
+  getWorkoutSessionsFS, type WorkoutSessionFS,
 } from "@/lib/firestore";
-import type { AIPlan } from "@/lib/types";
+import { parseSheetWorkout, type ParsedExercise } from "@/lib/workoutParse";
+import type { AIPlan, LogEntry } from "@/lib/types";
 import { useCurrentUser } from "./AuthGate";
 
 const WorkoutCalendar = dynamic(() => import("./WorkoutCalendar"), { ssr: false });
@@ -259,13 +259,91 @@ function ExercisePicker({ store, onSelect, onClose, addedNames }: PickerProps) {
   );
 }
 
+// ─── 過去の記録 ───────────────────────────────────────────────────────────────
+interface WorkoutRecord {
+  date:        string;
+  exercises:   ParsedExercise[];
+  totalVolume: number;
+  setCount:    number;
+  source:      'app' | 'sheet';   // アプリで記録 / スプレッドシート(I列)由来
+}
+
+const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
+
+function fmtDate(d: string) {
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return d;
+  return `${dt.getMonth() + 1}/${dt.getDate()}(${WEEKDAY[dt.getDay()]})`;
+}
+
+function RecordCard({ record, onEdit }: { record: WorkoutRecord; onEdit: () => void }) {
+  const [open, setOpen] = useState(false);
+  const muscles = Array.from(new Set(record.exercises.map(e => e.muscle)));
+
+  return (
+    <div className="bg-black/40 border border-red-900/30 rounded-2xl overflow-hidden">
+      <button type="button" onClick={() => setOpen(v => !v)} className="w-full px-4 py-3 text-left">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-black text-white">{fmtDate(record.date)}</span>
+              {record.source === 'sheet'
+                ? <FileSpreadsheet size={11} className="text-emerald-500/80" />
+                : <Smartphone size={11} className="text-red-500/80" />}
+              {muscles.slice(0, 3).map(m => (
+                <span key={m} className="text-[9px] bg-red-800/40 text-red-300 border border-red-700/30 px-1.5 py-0.5 rounded-full">
+                  {m}
+                </span>
+              ))}
+            </div>
+            <p className="text-[11px] text-red-200/50 truncate">
+              {record.exercises.map(e => e.name).join(' / ')}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-sm font-black text-yellow-400">{(record.totalVolume / 1000).toFixed(2)}<span className="text-[10px] font-medium ml-0.5">t</span></p>
+            <p className="text-[9px] text-red-300/50">{record.setCount}セット</p>
+          </div>
+          {open ? <ChevronDown size={14} className="text-red-700 shrink-0" /> : <ChevronRight size={14} className="text-red-700 shrink-0" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-3 space-y-2 border-t border-red-900/20 pt-2.5">
+          {record.exercises.map((ex, i) => (
+            <div key={i}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-bold text-red-100">{ex.name}</span>
+                <span className="text-[10px] text-red-300/50 shrink-0">{ex.volume.toLocaleString()}kg</span>
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {ex.sets.map((s, j) => (
+                  <span key={j} className="text-[10px] bg-black/50 border border-red-900/30 text-red-200/80 px-1.5 py-0.5 rounded">
+                    {s.weight}kg × {s.reps}回
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={onEdit}
+            className="w-full mt-1 flex items-center justify-center gap-1.5 text-[11px] font-bold text-red-300 border border-red-800/50 rounded-xl py-2 hover:bg-red-900/20 transition-colors">
+            <Pencil size={11} /> この記録を読み込んで編集
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── WorkoutTab (メイン) ──────────────────────────────────────────────────────
 interface Props {
   aiPlan?: AIPlan | null;
   gasEndpoint?: string;
+  /** ダッシュボードが読んだ日次ログ。I列(筋トレ)をここから取り込む */
+  logs?: LogEntry[];
 }
 
-export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
+export default function WorkoutTab({ aiPlan, gasEndpoint = '', logs = [] }: Props) {
   const currentUser = useCurrentUser();
   const uid = currentUser?.uid ?? '';
 
@@ -281,33 +359,76 @@ export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
   const [status,       setStatus]       = useState<'idle'|'loading'|'success'|'error'>('idle');
   const [planRests,    setPlanRests]    = useState<Record<string, number>>({});
 
-  // Stats (from localStorage)
-  const [dayCount,    setDayCount]    = useState(0);
-  const [monthVol,    setMonthVol]    = useState(0);
-  const [totalVol,    setTotalVol]    = useState(0);
+  // 保存済みセッション (端末 + Firestore)。統計・履歴はここと logs から組み立てる。
+  const [sessions,  setSessions]  = useState<Record<string, WorkoutSessionFS>>({});
+  const [reloadKey, setReloadKey] = useState(0);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORE_KEY) as Store | null;
     if (saved) setStore(saved);
-
-    // Load workout stats from Firestore (with localStorage fallback)
-    if (!uid) return;
-    const now = new Date();
-    const y = now.getFullYear(), m = now.getMonth() + 1;
-    Promise.all([
-      getWorkoutDatesFS(uid).then(dates => dates.length || getWorkoutDayCount()),
-      getMonthlyVolumeFS(uid, y, m).then(v => v || getMonthlyVolume(y, m)),
-      getTotalVolumeFS(uid).then(v => v || getTotalVolume()),
-    ]).then(([days, monthly, total]) => {
-      setDayCount(days);
-      setMonthVol(monthly);
-      setTotalVol(total);
-    });
   }, []);
+
+  // uid はマウント直後は空なので、依存配列に必ず入れる（ここが空だと統計が 0 のままになる）
+  useEffect(() => {
+    if (!uid) return;
+    getWorkoutSessionsFS(uid).then(setSessions);
+  }, [uid, reloadKey]);
+
+  // アプリの記録とスプレッドシート I列 をマージした全履歴
+  const records: WorkoutRecord[] = useMemo(() => {
+    const map = new Map<string, WorkoutRecord>();
+
+    // 1. スプレッドシート由来（Gemini や過去データ）
+    logs.forEach(l => {
+      const p = parseSheetWorkout(l.workout);
+      if (!p) return;
+      map.set(l.date, { date: l.date, exercises: p.exercises, totalVolume: p.totalVolume, setCount: p.setCount, source: 'sheet' });
+    });
+
+    // 2. アプリの記録が正。同じ日付があれば上書きする。
+    Object.values(sessions).forEach(s => {
+      const exs: ParsedExercise[] = (s.exercises ?? []).map(ex => ({
+        muscle: ex.muscle,
+        name:   ex.name,
+        sets:   ex.sets,
+        volume: ex.sets.reduce((sum, x) => sum + x.weight * x.reps, 0),
+      }));
+      if (exs.length === 0) return;
+      map.set(s.date, {
+        date:        s.date,
+        exercises:   exs,
+        totalVolume: s.totalVolume || exs.reduce((sum, e) => sum + e.volume, 0),
+        setCount:    exs.reduce((sum, e) => sum + e.sets.length, 0),
+        source:      'app',
+      });
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [logs, sessions]);
+
+  const monthPrefix = today.slice(0, 7);
+  const dayCount = records.length;
+  const totalVol = records.reduce((s, r) => s + r.totalVolume, 0);
+  const monthVol = records.filter(r => r.date.startsWith(monthPrefix)).reduce((s, r) => s + r.totalVolume, 0);
 
   // Session volume
   const sessionVolume = exercises.reduce((sum, ex) =>
     sum + ex.sets.reduce((s2, s) => s2 + (parseFloat(s.weight)||0)*(parseInt(s.reps)||0), 0), 0);
+
+  /** 過去の記録を入力欄に読み込んで編集できるようにする */
+  const loadRecord = (record: WorkoutRecord) => {
+    setSelectedDate(record.date);
+    setExercises(record.exercises.map(ex => ({
+      id:     `${Date.now()}_${Math.random()}`,
+      muscle: (MUSCLES as readonly string[]).includes(ex.muscle) ? (ex.muscle as Muscle) : guessMuscle(ex.name),
+      name:   ex.name,
+      sets:   ex.sets.map(s => ({ weight: String(s.weight), reps: String(s.reps) })),
+      lastRecord: getLastRecord(ex.name),
+    })));
+    setShowCalendar(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const addExercise = (muscle: Muscle, name: string) => {
     setExercises(prev => [...prev, {
@@ -317,19 +438,6 @@ export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
       lastRecord: getLastRecord(name),
     }]);
     setPickerOpen(false);
-  };
-
-  // AI計画の種目名から部位を推定（Geminiは Push/Pull/Legs 単位でしか部位を返さないため）
-  const guessMuscle = (name: string): Muscle => {
-    for (const m of MUSCLES) {
-      if (PRESETS[m].some(p => name.includes(p) || p.includes(name))) return m;
-    }
-    if (/ベンチ|チェスト|プレス|ペック/.test(name)) return '胸';
-    if (/ロー|ラット|プル|デッド|チンニング/.test(name)) return '背中';
-    if (/スクワット|レッグ|カーフ/.test(name))          return '脚';
-    if (/ショルダー|サイドレイズ|アーノルド/.test(name)) return '肩';
-    if (/カール|トライセップス|フレンチ|エクステンション/.test(name)) return '腕';
-    return '胸';
   };
 
   const applyAIPlan = () => {
@@ -371,39 +479,33 @@ export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
     try {
       const workoutStr = formatWorkoutForSheet(exercises);
 
-      // Save to Firebase (primary)
-      await saveWorkoutSessionFS(uid, exercises, selectedDate);
-      await saveWorkoutHistoryFS(uid, exercises, selectedDate);
-
-      // Save to localStorage (offline fallback)
+      // 端末に先に確定保存（Firestore が不通でも記録は残る）
       saveWorkoutHistory(exercises, selectedDate);
       saveWorkoutSession(exercises, selectedDate);
 
-      // Write to GAS + daily log
+      // Firestore 同期（ベストエフォート）。日次ログの I列 相当もここで持たせる。
+      await Promise.all([
+        saveWorkoutSessionFS(uid, exercises, selectedDate),
+        saveWorkoutHistoryFS(uid, exercises, selectedDate),
+        saveDailyLog(uid, selectedDate, { workout: workoutStr }),
+      ]);
+
+      // スプレッドシート I列 へ書き込む
       await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid, gas: gasEndpoint, date: selectedDate, workout: workoutStr }),
       });
 
-      // Refresh stats from Firebase
-      const now = new Date();
-      const y = now.getFullYear(), mo = now.getMonth() + 1;
-      const [days, monthly, total] = await Promise.all([
-        getWorkoutDatesFS(uid).then(dates => dates.length),
-        getMonthlyVolumeFS(uid, y, mo),
-        getTotalVolumeFS(uid),
-      ]);
-      setDayCount(days);
-      setMonthVol(monthly);
-      setTotalVol(total);
-
+      setReloadKey(k => k + 1);   // 履歴と統計を取り直す
       setStatus('success');
       setTimeout(() => { setExercises([]); setStatus('idle'); }, 1500);
     } catch { setStatus('error'); setTimeout(() => setStatus('idle'), 2000); }
   };
 
   const toTons = (kg: number) => (kg / 1000).toFixed(2);
+  const selectedRecord   = records.find(r => r.date === selectedDate);
+  const visibleRecords   = showAllHistory ? records : records.slice(0, 5);
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(180deg, #1a0000 0%, #0d0000 100%)' }}>
@@ -449,7 +551,23 @@ export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
         </button>
 
         {showCalendar && (
-          <WorkoutCalendar selectedDate={selectedDate} onSelect={date => { setSelectedDate(date); setShowCalendar(false); }} />
+          <WorkoutCalendar
+            selectedDate={selectedDate}
+            markedDates={records.map(r => r.date)}
+            onSelect={date => { setSelectedDate(date); setShowCalendar(false); }}
+          />
+        )}
+
+        {/* 選択日に既に記録がある場合の呼び出し */}
+        {selectedRecord && exercises.length === 0 && (
+          <button type="button" onClick={() => loadRecord(selectedRecord)}
+            className="w-full flex items-center justify-between bg-black/40 border border-red-800/40 rounded-2xl px-4 py-3 hover:bg-red-900/20 transition-colors">
+            <span className="text-xs text-red-200/80 text-left">
+              {fmtDate(selectedRecord.date)} は記録済み
+              <span className="text-red-300/50 ml-1">（{selectedRecord.setCount}セット / {toTons(selectedRecord.totalVolume)}t）</span>
+            </span>
+            <span className="flex items-center gap-1 text-[11px] font-bold text-red-300 shrink-0"><Pencil size={11} /> 編集</span>
+          </button>
         )}
 
         {/* AI Plan */}
@@ -547,6 +665,42 @@ export default function WorkoutTab({ aiPlan, gasEndpoint = '' }: Props) {
             </button>
           </>
         )}
+
+        {/* ─── 過去のトレーニング記録 ─────────────────────────────────────── */}
+        <div className="pt-4">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <div className="flex items-center gap-2">
+              <Dumbbell size={14} className="text-red-500" />
+              <h2 className="text-sm font-black text-white">過去のトレーニング</h2>
+            </div>
+            <span className="text-[10px] text-red-300/50">{records.length}件</span>
+          </div>
+
+          {records.length === 0 ? (
+            <div className="bg-black/30 border border-red-900/20 rounded-2xl px-4 py-6 text-center">
+              <p className="text-xs text-red-200/50 leading-relaxed">
+                まだ記録がありません。<br />
+                上の「本日のトレーニングを追加」から記録すると、ここに履歴が並びます。
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {visibleRecords.map(r => (
+                <RecordCard key={r.date} record={r} onEdit={() => loadRecord(r)} />
+              ))}
+              {records.length > visibleRecords.length && (
+                <button type="button" onClick={() => setShowAllHistory(true)}
+                  className="w-full text-xs font-bold text-red-300/70 hover:text-red-200 py-2.5 border border-red-900/30 rounded-2xl transition-colors">
+                  すべて表示（残り {records.length - visibleRecords.length} 件）
+                </button>
+              )}
+              <p className="flex items-center justify-center gap-3 text-[9px] text-red-300/40 pt-1">
+                <span className="flex items-center gap-1"><Smartphone size={9} /> アプリで記録</span>
+                <span className="flex items-center gap-1"><FileSpreadsheet size={9} /> スプレッドシート(I列)</span>
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Pickers & timer */}

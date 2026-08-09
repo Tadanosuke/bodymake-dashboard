@@ -9,29 +9,27 @@ import { useCurrentUser } from "./AuthGate";
 interface Props {
   selectedDate: string;
   onSelect: (date: string) => void;
+  /** 呼び出し側が把握している記録日（スプレッドシート由来を含む） */
+  markedDates?: string[];
 }
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-export default function WorkoutCalendar({ selectedDate, onSelect }: Props) {
+export default function WorkoutCalendar({ selectedDate, onSelect, markedDates }: Props) {
   const currentUser = useCurrentUser();
   const uid = currentUser?.uid ?? '';
 
   const today = new Date();
   const [year,  setYear]  = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
-  const [workoutDates, setWorkoutDates] = useState<Set<string>>(new Set());
+  const [ownDates, setOwnDates] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!uid) { setWorkoutDates(new Set(getWorkoutDates())); return; }
-    getWorkoutDatesFS(uid).then(dates => {
-      if (dates.length > 0) {
-        setWorkoutDates(new Set(dates));
-      } else {
-        setWorkoutDates(new Set(getWorkoutDates()));
-      }
-    });
+    if (!uid) { setOwnDates(getWorkoutDates()); return; }
+    getWorkoutDatesFS(uid).then(dates => setOwnDates(dates.length > 0 ? dates : getWorkoutDates()));
   }, [uid]);
+
+  const workoutDates = new Set([...(markedDates ?? []), ...ownDates]);
 
   const prev = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const next = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };

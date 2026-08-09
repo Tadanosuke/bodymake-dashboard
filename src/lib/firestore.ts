@@ -155,8 +155,36 @@ export async function getRecentDailyLogs(uid: string, n = 30): Promise<DailyLogF
 
 type SessionMap = Record<string, WorkoutSessionFS>;
 
+// uid が付く前の旧キー。既存の端末に残っている記録を取りこぼさないため読むだけ読む。
+const K_SESSIONS_LEGACY = 'bodymake_sessions';
+
 function localSessions(uid: string): SessionMap {
-  return lsGet<SessionMap>(K_SESSIONS(uid), {});
+  const legacy = lsGet<Record<string, { exercises: WorkoutSessionFS['exercises']; totalVolume: number }>>(K_SESSIONS_LEGACY, {});
+  const map: SessionMap = {};
+  Object.entries(legacy).forEach(([date, s]) => {
+    map[date] = { date, exercises: s.exercises ?? [], totalVolume: s.totalVolume ?? 0, updatedAt: '' };
+  });
+  return { ...map, ...lsGet<SessionMap>(K_SESSIONS(uid), {}) };
+}
+
+/**
+ * 全セッションを日付キーのマップで返す（端末 + Firestore をマージ）。
+ * 筋トレ画面の統計・履歴はこれ1回の取得だけで組み立てる。
+ */
+export async function getWorkoutSessionsFS(uid: string): Promise<SessionMap> {
+  const local = localSessions(uid);
+  const col = userCol(uid, 'workoutSessions');
+  if (!col) return local;
+
+  const remote = await guard<SessionMap | null>(
+    getDocs(col).then(snap => {
+      const m: SessionMap = {};
+      snap.docs.forEach(d => { m[d.id] = { ...(d.data() as WorkoutSessionFS), date: d.id }; });
+      return m;
+    }),
+    null);
+
+  return remote ? { ...local, ...remote } : local;
 }
 
 export async function saveWorkoutSessionFS(uid: string, exercises: ExerciseSession[], date: string): Promise<void> {
