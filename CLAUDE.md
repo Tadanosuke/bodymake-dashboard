@@ -65,8 +65,17 @@ Gemini Sparkはこのタブを見てアプリの現状を把握するため、�
 3. 実行結果（更新文字数）を確認し、ユーザーに何を申し送ったか報告する
 
 ### 既知の制約
-- **Firestore**: プロジェクト `bodymake-37d49` でCloud Firestore APIが有効化されるまで、
-  端末間同期は動作しない。`src/lib/firestore.ts` は localStorage を正とし、
-  全呼び出しに6秒の上限を設けてあるため、無効のままでもアプリは固まらず動作する。
+- **Firestore**: プロジェクト `bodymake-37d49`。2026-08-10に有効化済み（asia-northeast1）。
+  `src/lib/firestore.ts` は localStorage を正とし、全呼び出しに6秒の上限を設けてある。
+  Firestoreが落ちても固まらず動作するので、この設計は崩さないこと。
+- **Firestoreルールの期限**: テストモードで作成した場合、ルールに
+  `allow read, write: if request.time < timestamp.date(...)` が入っており、
+  **その日を過ぎると全機能が権限エラーで停止する**。必ず下記の恒久ルールに置き換える。
+  ```
+  match /users/{uid}/{doc=**} {
+    allow read, write: if request.auth != null && request.auth.uid == uid;
+  }
+  ```
+  `request.auth.uid == uid` が無いと、ログインさえすれば他人の記録を読めてしまう。
 - **GASの追加権限**: ウェブアプリは実行時に必要と判定されたスコープしか要求しない。
   DriveAppなど新しいAPIを使うと承認が必要になるため、原則 `SpreadsheetApp` の範囲で実装する。
