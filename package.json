@@ -9,6 +9,12 @@
     "lint": "eslint",
     "sync-claude": "node scripts/sync-claude.js",
     "sync-gemini": "node scripts/push-gemini-brief.js",
+    "sheet:init-admin": "node scripts/init-sheet-admin.js",
+    "sheet:list": "node scripts/sheet-admin.js list",
+    "sheet:read": "node scripts/sheet-admin.js read",
+    "sheet:write": "node scripts/sheet-admin.js write",
+    "sheet:clear": "node scripts/sheet-admin.js clear",
+    "sheet:write-json": "node scripts/sheet-admin.js write-json",
     "deploy-gas": "npx clasp push --force && npx clasp deploy --deploymentId AKfycbw4p0jbXBNSEtFbDzUdIMSX34Rx-GurZiYYJSlKDZ8DGfBjPz4vX0ZlwitxLmfTAq12 -d \"auto\""
   },
   "dependencies": {

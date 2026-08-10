@@ -50,8 +50,11 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action || 'appendLog';
+    if (action === 'listSheets')    return respond(listSheets());
     if (action === 'appendLog')     return respond(appendLog(payload));
     if (action === 'updateAppSpec') return respond(updateAppSpec(payload));
+    if (action === 'getRange')      return respond(getRange(payload));
+    if (action === 'updateRange')   return respond(updateRange(payload));
     return respond({ error: 'Unknown action: ' + action });
   } catch (err) {
     return respond({ error: String(err) });
@@ -96,6 +99,86 @@ function getSheet(ss) {
 function listSheets() {
   const ss = getSS();
   return { sheets: ss.getSheets().map(s => ({ name: s.getName(), rows: s.getLastRow() })) };
+}
+
+function requireAdmin_(payload) {
+  const expected = String(PropertiesService.getScriptProperties().getProperty('SHEET_ADMIN_TOKEN') || '');
+  if (!expected) throw new Error('SHEET_ADMIN_TOKEN is not configured in Apps Script properties');
+  const actual = String(payload.adminToken || '');
+  if (!actual || actual !== expected) throw new Error('Invalid SHEET_ADMIN_TOKEN');
+}
+
+// Run with clasp after deploy/push when enabling Codex/Claude sheet administration:
+// npx clasp run setSheetAdminToken --params '["your-token"]'
+function setSheetAdminToken(token) {
+  const value = String(token || '').trim();
+  if (value.length < 24) throw new Error('Token must be at least 24 characters');
+  PropertiesService.getScriptProperties().setProperty('SHEET_ADMIN_TOKEN', value);
+  return { success: true };
+}
+
+function getNamedSheet_(ss, sheetName) {
+  const name = String(sheetName || '').trim();
+  if (!name) throw new Error('sheet is required');
+  const sheet = ss.getSheetByName(name);
+  if (!sheet) throw new Error('Sheet not found: ' + name);
+  return sheet;
+}
+
+// Codex/Claude 管理用: 任意タブの指定範囲を読む。
+// 通常アプリのデータ契約とは別口で、手動確認・運用保守に使う。
+function getRange(payload) {
+  requireAdmin_(payload);
+  const ss = getSS();
+  const sheet = getNamedSheet_(ss, payload.sheet);
+  const a1 = String(payload.range || '').trim();
+  if (!a1) throw new Error('range is required');
+
+  const range = sheet.getRange(a1);
+  return {
+    success: true,
+    sheet: sheet.getName(),
+    range: range.getA1Notation(),
+    values: range.getValues(),
+    displayValues: range.getDisplayValues(),
+  };
+}
+
+// Codex/Claude 管理用: 任意タブの指定範囲を更新する。
+// values は二次元配列。単一セル更新だけなら value も利用可能。
+function updateRange(payload) {
+  requireAdmin_(payload);
+  const ss = getSS();
+  const sheet = getNamedSheet_(ss, payload.sheet);
+  const a1 = String(payload.range || '').trim();
+  if (!a1) throw new Error('range is required');
+
+  let values = payload.values;
+  if (!values && Object.prototype.hasOwnProperty.call(payload, 'value')) {
+    values = [[payload.value]];
+  }
+  if (!Array.isArray(values) || !Array.isArray(values[0])) {
+    throw new Error('values must be a 2D array, or pass value for a single cell');
+  }
+
+  const range = sheet.getRange(a1);
+  if (range.getNumRows() !== values.length || range.getNumColumns() !== values[0].length) {
+    throw new Error(
+      'Range size ' + range.getNumRows() + 'x' + range.getNumColumns()
+      + ' does not match values size ' + values.length + 'x' + values[0].length
+    );
+  }
+
+  range.setValues(values);
+  SpreadsheetApp.flush();
+
+  return {
+    success: true,
+    sheet: sheet.getName(),
+    range: range.getA1Notation(),
+    rows: values.length,
+    columns: values[0].length,
+  };
 }
 
 // Claude Code → Gemini Spark への申し送りタブ。

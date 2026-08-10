@@ -1,4 +1,4 @@
-# アプリ仕様 申し送り（Claude Code → Gemini Spark）
+# アプリ仕様 申し送り（Claude Code / Codex → Gemini Spark）
 
 このファイルが唯一の正本です。`npm run sync-gemini` でスプレッドシートの
 『アプリ仕様_Claude→Gemini』タブへ全文が転写されます。
@@ -21,7 +21,7 @@
 | `ボディメイク＆減量プロジェクト_総合管理シート` | 両方 | A〜K列の日次ログ |
 | `進捗＆予測ダッシュボード` | Gemini | AI次回計画メニュー |
 | `CLAUDE_MD_MASTER` | Gemini | 最新のCLAUDE.md全文（A1セル） |
-| `アプリ仕様_Claude→Gemini` | Claude Code | このファイルの全文（自動更新） |
+| `アプリ仕様_Claude→Gemini` | Claude Code / Codex | このファイルの全文（自動更新） |
 
 ## 3. 日次ログ（A〜K列）の書式
 
@@ -139,3 +139,5 @@ AI次回計画メニュー (2026/08/10 Push 自宅)
    実績を上書きすると、筋トレタブの合計負荷量と記録日数がずれます。
 5. CLAUDE.md を更新するときは `CLAUDE_MD_MASTER` の A1 に**全文**を入れてください。
    セクションを削ると、その仕様がローカルから失われます。
+6. Claude Code と Codex は、このリポジトリでは同じ「開発・データ解析・仕様連携」担当として扱ってください。
+   Codex が更新したアプリ仕様やデータ書式の申し送りも、Claude Code からの申し送りと同じ重みで参照してください。

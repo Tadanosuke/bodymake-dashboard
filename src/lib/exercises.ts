@@ -200,11 +200,13 @@ export function guessMuscle(name: string): Muscle {
   for (const m of MUSCLES) {
     if (PRESETS[m].some(p => name.includes(p) || p.includes(name))) return m;
   }
+  // 「プレスダウン」が「プレス」で胸に落ちないよう、腕・肩・脚を先に判定する
+  if (/カール|トライセップス|トライセプス|フレンチ|プッシュダウン|プレスダウン|キックバック/.test(name)) return '腕';
+  if (/ショルダー|サイドレイズ|リアレイズ|フロントレイズ|アーノルド/.test(name)) return '肩';
+  if (/スクワット|レッグ|カーフ|ランジ/.test(name))                   return '脚';
   if (/ベンチ|チェスト|プレス|ペック/.test(name))                     return '胸';
   if (/ロー|ラット|プル|デッド|チンニング/.test(name))                return '背中';
-  if (/スクワット|レッグ|カーフ/.test(name))                          return '脚';
-  if (/ショルダー|サイドレイズ|アーノルド/.test(name))                return '肩';
-  if (/カール|トライセップス|トライセプス|フレンチ|エクステンション/.test(name)) return '腕';
+  if (/エクステンション/.test(name))                                  return '腕';
   if (/クランチ|プランク|ツイスト|アブ/.test(name))                   return '腹筋';
   if (/ヒップ|アダクター|アブダクション/.test(name))                  return 'お尻';
   if (/ウォーキング|ランニング|バイク|HIIT/.test(name))               return '有酸素';
