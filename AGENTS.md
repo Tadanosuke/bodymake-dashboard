@@ -17,11 +17,11 @@ This repository is the mobile dashboard for 薫之介（タダノスケ）さん
 Codex must take over the same engineering and data-analysis role previously assigned to Claude Code:
 
 - Build, fix, test, and deploy the Next.js/Vercel app.
-- Preserve the app's spreadsheet contracts with Gemini Spark.
-- Keep Claude, Codex, Gemini Spark, and the shared spreadsheet aligned.
+- Preserve the app's spreadsheet contracts with Gemini.
+- Keep Claude, Codex, normal Gemini, Gemini Spark, and the shared spreadsheet aligned.
 - Treat `CLAUDE.md` as the Claude-facing project memory and mirror any operationally relevant rules here so Codex can act with the same assumptions.
 
-Gemini Spark remains the main AI coach/secretary for daily conversation, meal-photo analysis, calorie/PFC calculation, daily spreadsheet management, morning same-day workout planning after breakfast, calendar checks, and nightly 23:30 review delivery.
+Normal Gemini is the main AI coach/secretary for daily conversation, meal-photo analysis, calorie/PFC calculation, daily spreadsheet management, and morning same-day workout planning after breakfast. Gemini Spark is a reserve tool for long multi-app automations only.
 
 ## Shared Spreadsheet
 
@@ -29,7 +29,7 @@ The shared database is:
 
 - Spreadsheet: `ボディメイク＆減量プロジェクト_総合管理シート`
 - Spreadsheet ID: `1wJefKcr0S2hPcI9s7e1c89kWabnYpgQa0eg315pxtlE`
-- Instruction document: `15kg減量＆ボディメイクプロジェクト_指示書` (Gemini Spark reads this every time)
+- Instruction document: `15kg減量＆ボディメイクプロジェクト_指示書` (normal Gemini reads this every time)
 - Instruction document ID: `1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY`
 - Instruction document URL: https://docs.google.com/document/d/1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY/edit?usp=sharing
 
@@ -39,13 +39,15 @@ Important tabs:
 - `進捗＆予測ダッシュボード`: Gemini writes the next workout plan under `AI次回計画メニュー (YYYY/MM/DD 部位 場所)`.
 - `CLAUDE_MD_MASTER`: Gemini-managed master copy of `CLAUDE.md` in A1. `npm run sync-claude` pulls it into the repo.
 - `アプリ仕様_Claude→Gemini`: app/spec handoff from the engineering agent to Gemini. `npm run sync-gemini` pushes `docs/GEMINI_BRIEF.md` into this tab.
-- `AI運用ルール_必読`: mandatory coordination rules for Claude Code, Codex, and Gemini Spark.
+- `AI運用ルール_必読`: mandatory coordination rules for Claude Code, Codex, normal Gemini, and Gemini Spark.
 - `AI変更履歴`: append-only log of spreadsheet/app/spec changes made by any AI.
 - `AI会話議事録`: append-only summary of user conversations that affect requirements, operations, data formats, or AI roles.
+- `docs/GEMINI_DAILY_COACH_PROTOCOL.md`: canonical prompt and 20-turn handoff protocol for normal Gemini daily coaching.
 
 Use the spreadsheet as the coordination source for the three-tool workflow:
 
-- Gemini Spark writes coaching data and next plans to the sheet.
+- Normal Gemini writes coaching data and next plans to the sheet.
+- Gemini Spark is reserved for multi-app automations when normal Gemini is insufficient.
 - The app reads Gemini's values and writes user-entered records to the sheet.
 - Claude/Codex updates the app and publishes implementation/spec changes back to Gemini through `docs/GEMINI_BRIEF.md` and `npm run sync-gemini`.
 
@@ -58,7 +60,8 @@ Before any non-trivial spreadsheet edit, app implementation, data-format change,
 3. Latest 20 rows of `AI会話議事録`
 4. `アプリ仕様_Claude→Gemini`
 5. Google Docs `15kg減量＆ボディメイクプロジェクト_指示書`
-6. `CLAUDE_MD_MASTER` / local `CLAUDE.md` / local `AGENTS.md`, as relevant
+6. `docs/GEMINI_DAILY_COACH_PROTOCOL.md` for normal Gemini daily coaching
+7. `CLAUDE_MD_MASTER` / local `CLAUDE.md` / local `AGENTS.md`, as relevant
 
 After changing spreadsheet data, GAS, app code, data contracts, docs, or AI responsibilities:
 
@@ -67,6 +70,12 @@ After changing spreadsheet data, GAS, app code, data contracts, docs, or AI resp
 - Update `docs/GEMINI_BRIEF.md` and run `npm run sync-gemini` when Gemini's assumptions or app/spreadsheet contracts changed.
 - If a decision affects Gemini's daily coaching behavior, make sure the Google Docs instruction document is updated or explicitly log that it still needs a manual update.
 - Do not make silent sheet edits. If ownership is unclear, ask the user before editing.
+
+## Normal Gemini Handoff Protocol
+
+Normal Gemini is expected to use `docs/GEMINI_DAILY_COACH_PROTOCOL.md` as its fixed startup prompt. If a Gemini conversation becomes long or reaches roughly 20 user/assistant round trips, Gemini must proactively output a next-conversation handoff prompt without waiting for the user to ask.
+
+The handoff prompt must include the Docs/sheet tabs to read, latest open items, today's recorded data, column ownership rules, the next action, recent food/training/sleep/DOMS/schedule context, and meeting-log items to record.
 
 ## Daily Log Contract
 
@@ -253,6 +262,7 @@ Before starting non-trivial work:
 6. Log the change and any user-facing decision to the governance tabs.
 7. Keep terminology consistent:
    - `Claude Code` and `Codex` are engineering/data-analysis agents for this repo.
-   - `Gemini Spark` is the daily coach and spreadsheet planner.
+   - `通常Gemini` is the daily coach and spreadsheet planner.
+   - `Gemini Spark` is reserve capacity for multi-app automations.
    - The app records actual workout results.
    - The spreadsheet coordinates all three.

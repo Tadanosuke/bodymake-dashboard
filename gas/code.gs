@@ -189,11 +189,13 @@ const AI_CHANGE_LOG_SHEET_NAME = 'AI変更履歴';
 const AI_MEETING_NOTES_SHEET_NAME = 'AI会話議事録';
 
 const AI_RULES_ROWS = [
-  ['AI三者運用ルール（必読）', 'Claude Code / Codex / Gemini Spark must read this tab before changing spreadsheet data, app specs, or implementation assumptions.'],
+  ['AI三者運用ルール（必読）', 'Claude Code / Codex / normal Gemini / Gemini Spark must read this tab before changing spreadsheet data, app specs, or implementation assumptions.'],
   ['最終更新', '2026-08-10'],
-  ['目的', '3つのAIが同じ正本を参照し、勝手な変更や古い前提による誤実装を防ぐ。'],
-  ['必読順序', '1. このタブ  2. AI変更履歴の最新20件  3. AI会話議事録の最新20件  4. アプリ仕様_Claude→Gemini  5. Google Docs 指示書  6. CLAUDE_MD_MASTER / AGENTS.md'],
-  ['Google Docs指示書', 'Gemini Spark が毎回参照する最上位指示書: https://docs.google.com/document/d/1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY/edit?usp=sharing'],
+  ['目的', 'Claude/Codex/通常Gemini/Gemini Sparkが同じ正本を参照し、勝手な変更や古い前提による誤実装を防ぐ。'],
+  ['必読順序', '1. このタブ  2. AI変更履歴の最新20件  3. AI会話議事録の最新20件  4. アプリ仕様_Claude→Gemini  5. Google Docs 指示書  6. docs/GEMINI_DAILY_COACH_PROTOCOL.md  7. CLAUDE_MD_MASTER / AGENTS.md'],
+  ['Google Docs指示書', '通常Gemini が毎回参照する最上位指示書: https://docs.google.com/document/d/1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY/edit?usp=sharing'],
+  ['通常Gemini運用', '日常コーチ・食事解析・朝食後の当日計画・シート記録の正担当。固定プロンプトと20往復引き継ぎは docs/GEMINI_DAILY_COACH_PROTOCOL.md が正本。'],
+  ['20往復引き継ぎ', '通常Geminiは会話が長くなった、または約20往復に達したと判断したら、ユーザーに指示されなくても次会話への引き継ぎプロンプトを出力する。'],
   ['編集前ルール', 'シートやアプリ仕様を変える前に、対象タブ・列の所有者を確認する。B列体重とI列筋トレ実績はアプリ領域。H列歩数、K列の睡眠/筋肉痛/今日/朝食、C-F栄養はGemini領域。'],
   ['編集後ルール', 'シート、GAS、アプリ、仕様文書を変更したAIは、AI変更履歴へ日時・担当AI・対象・内容・理由・ユーザー確認有無を残す。'],
   ['会話記録ルール', 'ユーザーとの会話で要件、運用、食事/運動方針、データ書式、AI役割が変わった場合、AI会話議事録へ要約・決定事項・次アクションを残す。'],
@@ -201,7 +203,7 @@ const AI_RULES_ROWS = [
   ['正本', '運用ルールはこのタブ。Gemini最上位指示はGoogle Docs指示書。アプリ仕様はアプリ仕様_Claude→Gemini。Claude/Codex作業手順はCLAUDE.md/AGENTS.md。日次データは総合管理シート。'],
   ['競合時', '不明点や矛盾があれば推測で上書きせず、ユーザーに確認する。既存データを消す変更は必ず明示確認を取る。'],
   ['Codex/Claude', '開発・データ解析担当。変更後はdocs/GEMINI_BRIEF.mdを更新し、必要ならsync-geminiでGeminiへ申し送る。'],
-  ['Gemini Spark', '日常コーチ・食事解析・朝食後の当日計画担当。AI次回計画メニューは進捗＆予測ダッシュボードに書き、実績I列は触らない。'],
+  ['Gemini Spark', '通常Geminiで足りない複数アプリ横断の長い自動タスク用の予備。日常記録やシート単体更新の常用担当にはしない。'],
 ];
 
 const AI_CHANGE_LOG_HEADERS = [
@@ -261,7 +263,7 @@ function setupAiGovernance(payload) {
     target: AI_RULES_SHEET_NAME + ' / ' + AI_CHANGE_LOG_SHEET_NAME + ' / ' + AI_MEETING_NOTES_SHEET_NAME,
     changeType: 'governance_setup',
     summary: 'Created/updated mandatory AI coordination tabs and logging protocol.',
-    reason: 'Prevent Claude Code, Codex, and Gemini Spark from acting on inconsistent spreadsheet assumptions.',
+    reason: 'Prevent Claude Code, Codex, normal Gemini, and Gemini Spark from acting on inconsistent spreadsheet assumptions.',
     userConfirmed: 'yes',
     related: 'setupAiGovernance',
   }));
@@ -314,7 +316,7 @@ function appendAiMeetingNote(payload) {
   return { success: true, sheet: AI_MEETING_NOTES_SHEET_NAME, row: sh.getLastRow() };
 }
 
-// Claude Code → Gemini Spark への申し送りタブ。
+// Claude Code / Codex → Gemini への申し送りタブ。
 // アプリを変更するたび `npm run sync-gemini` から呼ばれ、全文を書き換える。
 const SPEC_SHEET_NAME = 'アプリ仕様_Claude→Gemini';
 

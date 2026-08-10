@@ -122,7 +122,7 @@ function printTable(values) {
   if (command === 'write-json') {
     if (!sheet || !range || !raw) throw new Error('Usage: write-json <sheet> <range> <json-values>');
     if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
-    const values = JSON.parse(raw);
+    const values = JSON.parse(process.env.SHEET_VALUES_JSON || raw);
     const json = await post({ action: 'updateRange', sheet, range, values, adminToken });
     console.log(`Updated ${json.sheet}!${json.range} (${json.rows}x${json.columns})`);
     return;
