@@ -164,7 +164,8 @@ The home dashboard uses the Deep Research scientific model:
 
 - Start weight is the canonical 90.0kg, never the maximum recorded weight.
 - Raw body weight is drawn as points; 14-day EMA Trend Weight is drawn as the main smooth line using `Y_t = 0.133 * X_t + 0.867 * Y_{t-1}`.
-- Show the four scientific KPI cards: Trend Weight, %BW/week, dynamic TDEE from 14-day intake and trend-weight change, and estimated cumulative fat-mass cut.
+- Draw the future Phase 1 -> Phase 2 -> Phase 3 target guideline as a dotted line to future dates. This is a visual guide, not a days-ahead/behind forecast.
+- Show the four scientific KPI cards with Japanese labels: `ノイズ除去した実質体重`, `今週の減量スピード`, `実測消費代謝量 (TDEE)`, and `計算上の純脂肪カット量`.
 - Do not show linear equal-speed forecasts or "days ahead/behind" badges.
 - Show the 3 Phase roadmap: Phase 1 90->84kg at 2000kcal P155/F44/C245, Phase 2 84->79kg at 1950kcal P165/F43/C225 with refeed note, Phase 3 79->75kg at 1900kcal P175/F46/C195 with diet-break note.
 

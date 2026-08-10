@@ -3,6 +3,7 @@ export interface WeightEntry {
   isoDate?: string;
   weight?: number;
   trendWeight?: number;
+  targetGuide?: number;
   ideal: number;
 }
 

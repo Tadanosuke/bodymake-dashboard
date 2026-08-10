@@ -184,30 +184,30 @@ export default function Dashboard({ data }: Props) {
       <div className="grid grid-cols-2 gap-2.5">
         <ScienceCard
           icon={<Scale size={15} />}
-          label="Trend Weight"
+          label="ノイズ除去した実質体重"
           value={trendWeight == null ? "-- kg" : `${trendWeight.toFixed(1)} kg`}
-          sub="14日EMAで日々の水分ノイズを平滑化"
+          sub="水分ブレを除いた体重"
           color="text-blue-400"
         />
         <ScienceCard
           icon={<ShieldCheck size={15} />}
-          label="%BW/week"
+          label="今週の減量スピード"
           value={weeklyPct == null ? "-- %" : `${weeklyPct.toFixed(2)}%`}
-          sub={inSafeZone ? "安全圏 0.5〜1.0%/週" : "安全圏 0.5〜1.0%/週を確認"}
+          sub={inSafeZone ? "安全圏 0.5〜1.0%/週" : "安全圏は0.5〜1.0%/週"}
           color={inSafeZone ? "text-emerald-400" : "text-amber-400"}
         />
         <ScienceCard
           icon={<Gauge size={15} />}
-          label="Dynamic TDEE"
+          label="実測消費代謝量 (TDEE)"
           value={data.scienceMetrics.dynamicTdee == null ? "-- kcal" : `${data.scienceMetrics.dynamicTdee.toLocaleString()} kcal`}
-          sub="14日摂取平均とTrend Weight変化から逆算"
+          sub="過去14日の実測データから計算"
           color="text-purple-400"
         />
         <ScienceCard
           icon={<Flame size={15} />}
-          label="Fat Cut Est."
+          label="計算上の純脂肪カット量"
           value={data.scienceMetrics.estimatedFatMassCutKg == null ? "-- kg" : `${data.scienceMetrics.estimatedFatMassCutKg.toFixed(2)} kg`}
-          sub="累積アンダーカロリー ÷ 8,300kcal"
+          sub="水分を除く純脂肪の減量分"
           color="text-orange-400"
         />
       </div>
@@ -232,7 +232,7 @@ export default function Dashboard({ data }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <Activity size={15} className="text-blue-400" />
-              <h2 className="text-sm font-semibold text-slate-200">体重推移 & Trend Weight</h2>
+              <h2 className="text-sm font-semibold text-slate-200">体重推移と目標ガイド</h2>
           </div>
           <div className="flex flex-wrap justify-end gap-2 text-[9px]">
             <span className="flex items-center gap-1 text-blue-400">
@@ -242,6 +242,10 @@ export default function Dashboard({ data }: Props) {
             <span className="flex items-center gap-1 text-cyan-300">
               <span className="w-4 border-t-2 border-cyan-300" />
               14日EMA
+            </span>
+            <span className="flex items-center gap-1 text-violet-300">
+              <span className="w-4 border-t border-violet-300 border-dashed" />
+              目標ガイド
             </span>
             <span className="flex items-center gap-1 text-amber-400">
               <span className="w-4 border-t border-amber-400 border-dashed" />

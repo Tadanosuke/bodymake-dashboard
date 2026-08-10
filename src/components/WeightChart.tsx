@@ -44,7 +44,7 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
   }
 
   const validValues = data
-    .flatMap((d) => [d.weight, d.trendWeight])
+    .flatMap((d) => [d.weight, d.trendWeight, d.targetGuide])
     .filter((v): v is number => typeof v === "number" && v > 0);
   const minWeight = validValues.length > 0 ? Math.min(...validValues) - 1 : phaseTarget - 5;
   const maxWeight = validValues.length > 0 ? Math.max(...validValues) + 1 : phaseTarget + 5;
@@ -87,11 +87,22 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
           />
           <Line
             dataKey="trendWeight"
-            name="Trend Weight"
+            name="実質体重"
             stroke="#67e8f9"
             strokeWidth={2.5}
             dot={false}
             activeDot={{ r: 4, fill: "#a5f3fc" }}
+            connectNulls={false}
+            type="monotone"
+          />
+          <Line
+            dataKey="targetGuide"
+            name="目標ガイド"
+            stroke="#c4b5fd"
+            strokeWidth={2}
+            strokeDasharray="5 5"
+            dot={false}
+            activeDot={{ r: 4, fill: "#ddd6fe" }}
             connectNulls={false}
             type="monotone"
           />

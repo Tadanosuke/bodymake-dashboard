@@ -145,6 +145,44 @@ function computeTrendHistory(withWeight: LogEntry[]): WeightEntry[] {
   });
 }
 
+function addTargetGuideline(weightHistory: WeightEntry[], currentWeight: number): WeightEntry[] {
+  const lastEntry = weightHistory.at(-1);
+  const lastDate = lastEntry?.isoDate ?? dateKey();
+  const startGuideWeight = lastEntry?.trendWeight ?? currentWeight;
+  const out = weightHistory.map((entry) => ({ ...entry }));
+
+  if (out.length > 0 && startGuideWeight > 0) {
+    out[out.length - 1] = {
+      ...out[out.length - 1],
+      targetGuide: round(startGuideWeight),
+    };
+  }
+
+  let guideWeight = startGuideWeight;
+  let guideDate = lastDate;
+  let guard = 0;
+
+  while (guideWeight > FINAL_TARGET && guard < 80) {
+    const phase = ROADMAP_BASE.find((p) => guideWeight > p.targetWeight && guideWeight <= p.startWeight)
+      ?? ROADMAP_BASE.find((p) => guideWeight > p.targetWeight)
+      ?? ROADMAP_BASE[ROADMAP_BASE.length - 1];
+    const weeklyDrop = phase.approxWeeklyLossKg;
+    guideWeight = Math.max(guideWeight - weeklyDrop, phase.targetWeight, FINAL_TARGET);
+    guideDate = addDays(guideDate, 7);
+    out.push({
+      date: guideDate.slice(5).replace('-', '/'),
+      isoDate: guideDate,
+      targetGuide: round(guideWeight),
+      ideal: computeIdeal(guideDate),
+    });
+
+    if (guideWeight <= phase.targetWeight && phase.targetWeight <= FINAL_TARGET) break;
+    guard += 1;
+  }
+
+  return out;
+}
+
 function trendOnOrBefore(weightHistory: WeightEntry[], dateStr: string): number | undefined {
   for (let i = weightHistory.length - 1; i >= 0; i--) {
     const entry = weightHistory[i];
@@ -202,12 +240,16 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function memoPart(memo: string, key: string): string {
-  const found = String(memo || '')
-    .split(' / ')
-    .map(s => s.trim())
-    .find(s => s.startsWith(`${key}:`));
-  return found ? found.slice(key.length + 1).trim() : '';
+function parseMorningMemo(memo: string): Record<'睡眠' | '筋肉痛' | '今日' | '朝食', string> {
+  const out = { 睡眠: '', 筋肉痛: '', 今日: '', 朝食: '' };
+  const text = String(memo || '').replace(/\r?\n/g, ' ').trim();
+  const re = /(睡眠|筋肉痛|今日|朝食)\s*[:：]\s*([\s\S]*?)(?=\s*[\/／]\s*(?:睡眠|筋肉痛|今日|朝食)\s*[:：]|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const key = m[1] as keyof typeof out;
+    out[key] = m[2].replace(/^[\s/／]+|[\s/／]+$/g, '').trim();
+  }
+  return out;
 }
 
 function buildMorningSync(logs: LogEntry[], aiPlan: AIPlan | null): MorningSyncStatus {
@@ -216,10 +258,11 @@ function buildMorningSync(logs: LogEntry[], aiPlan: AIPlan | null): MorningSyncS
   const todayLog = logs.find(l => l.date === today);
   const yesterdayLog = logs.find(l => l.date === yesterday);
   const memo = todayLog?.memo ?? '';
-  const sleep = memoPart(memo, '睡眠');
-  const doms = memoPart(memo, '筋肉痛');
-  const todayPlan = memoPart(memo, '今日');
-  const breakfast = memoPart(memo, '朝食');
+  const parsedMemo = parseMorningMemo(memo);
+  const sleep = parsedMemo.睡眠;
+  const doms = parsedMemo.筋肉痛;
+  const todayPlan = parsedMemo.今日;
+  const breakfast = parsedMemo.朝食;
   return {
     date: today,
     yesterdayDate: yesterday,
@@ -305,14 +348,15 @@ export function buildDashboard(
   }
 
   const withWeight = logs.filter(l => l.weight > 0).slice(0, 30).reverse();
-  const weightHistory: WeightEntry[] = computeTrendHistory(withWeight);
+  const measuredWeightHistory: WeightEntry[] = computeTrendHistory(withWeight);
 
   const currentWeight = withWeight.length > 0 ? withWeight[withWeight.length - 1].weight : START_WEIGHT;
-  const scienceMetrics = computeScienceMetrics(logs, weightHistory);
+  const scienceMetrics = computeScienceMetrics(logs, measuredWeightHistory);
   const roadmapWeight = scienceMetrics.trendWeight ?? currentWeight;
   const roadmapPhases = buildRoadmapPhases(roadmapWeight);
   const activePhase = roadmapPhases.find(p => p.active) ?? roadmapPhases.find(p => !p.completed) ?? roadmapPhases[roadmapPhases.length - 1];
   const todayLog = logs.find(l => l.date === dateKey()) ?? logs[0];
+  const weightHistory = addTargetGuideline(measuredWeightHistory, currentWeight);
 
   return {
     ...BASE,
