@@ -160,6 +160,14 @@ Main tabs are:
 
 The old `履歴` tab was removed on 2026-08-10. Workout history lives in `筋トレ`; weight/calorie trends live in `ホーム`.
 
+The home dashboard uses the Deep Research scientific model:
+
+- Start weight is the canonical 90.0kg, never the maximum recorded weight.
+- Raw body weight is drawn as points; 14-day EMA Trend Weight is drawn as the main smooth line using `Y_t = 0.133 * X_t + 0.867 * Y_{t-1}`.
+- Show the four scientific KPI cards: Trend Weight, %BW/week, dynamic TDEE from 14-day intake and trend-weight change, and estimated cumulative fat-mass cut.
+- Do not show linear equal-speed forecasts or "days ahead/behind" badges.
+- Show the 3 Phase roadmap: Phase 1 90->84kg at 2000kcal P155/F44/C245, Phase 2 84->79kg at 1950kcal P165/F43/C225 with refeed note, Phase 3 79->75kg at 1900kcal P175/F46/C195 with diet-break note.
+
 The workout tab should continue to behave like an independent `筋トレMEMO`-style screen:
 
 - Red visual style.

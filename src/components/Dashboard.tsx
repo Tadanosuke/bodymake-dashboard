@@ -1,10 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { TrendingDown, Calendar, Zap, Activity, Flame, Sparkles, Dumbbell } from "lucide-react";
-import MilestoneCards from "./MilestoneCards";
+import { TrendingDown, Zap, Activity, Flame, Sparkles, Dumbbell, Gauge, ShieldCheck, Scale, Route } from "lucide-react";
 import NutritionMeters from "./NutritionMeters";
-import type { DashboardData } from "@/lib/types";
+import type { DashboardData, RoadmapPhase } from "@/lib/types";
 
 const WeightChart = dynamic(() => import("./WeightChart"), { ssr: false });
 
@@ -18,6 +17,85 @@ function StatBadge({ label, value, sub, color }: { label: string; value: string;
       <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
       {sub && <p className="text-[10px] text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+function ScienceCard({
+  icon,
+  label,
+  value,
+  sub,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[#1e2d40] bg-[#0f1a2b] p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className={color}>{icon}</span>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      </div>
+      <p className={`text-xl font-black ${color}`}>{value}</p>
+      <p className="mt-1 text-[10px] leading-snug text-slate-500">{sub}</p>
+    </div>
+  );
+}
+
+function PhaseRoadmap({ phases }: { phases: RoadmapPhase[] }) {
+  return (
+    <div className="space-y-2.5">
+      {phases.map((phase) => (
+        <div
+          key={phase.id}
+          className={`rounded-lg border p-3 ${
+            phase.active
+              ? "border-blue-500/40 bg-blue-500/10"
+              : phase.completed
+                ? "border-emerald-500/30 bg-emerald-500/10"
+                : "border-[#1e2d40] bg-[#0f1a2b]"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[#111827] px-2 py-0.5 text-[10px] font-bold text-slate-300">
+                  Phase {phase.id}
+                </span>
+                <p className="text-sm font-bold text-slate-100">{phase.name}</p>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">{phase.rangeLabel}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              phase.active
+                ? "bg-blue-500/20 text-blue-300"
+                : phase.completed
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "bg-slate-700/50 text-slate-400"
+            }`}>
+              {phase.completed ? "完了" : phase.active ? "現在地" : "次"}
+            </span>
+          </div>
+
+          <div className="mt-3 h-2 rounded-full bg-[#1e2d40]">
+            <div
+              className={`h-full rounded-full ${phase.completed ? "bg-emerald-400" : "bg-blue-400"}`}
+              style={{ width: `${phase.progressPct}%` }}
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-400">
+            <p>週 {phase.targetWeeklyLossPct}%BW / 約-{phase.approxWeeklyLossKg}kg</p>
+            <p className="text-right">{phase.calories.toLocaleString()} kcal</p>
+            <p>P {phase.protein}g / F {phase.fat}g / C {phase.carbs}g</p>
+            <p className="text-right text-amber-300">{phase.note ?? "標準運用"}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -44,6 +122,10 @@ export default function Dashboard({ data }: Props) {
   const lost = data.startWeight - data.currentWeight;
   const remaining = data.currentWeight - data.finalTarget;
   const progressPct = Math.max(0, Math.min(100, Math.round((lost / (data.startWeight - data.finalTarget)) * 100)));
+  const trendWeight = data.scienceMetrics.trendWeight;
+  const weeklyPct = data.scienceMetrics.weeklyBodyWeightChangePct;
+  const weeklyPctAbs = weeklyPct == null ? null : Math.abs(weeklyPct);
+  const inSafeZone = weeklyPct != null && weeklyPctAbs != null && weeklyPctAbs >= 0.5 && weeklyPctAbs <= 1.0 && weeklyPct < 0;
 
   const last7Logs = data.logs.slice(0, 7);
   const weeklyCals = last7Logs.reduce((sum, l) => sum + (l.calories || 0), 0);
@@ -98,30 +180,69 @@ export default function Dashboard({ data }: Props) {
 
       </div>
 
-      {/* Stat grid — 2 badges */}
+      {/* Science KPI grid */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <ScienceCard
+          icon={<Scale size={15} />}
+          label="Trend Weight"
+          value={trendWeight == null ? "-- kg" : `${trendWeight.toFixed(1)} kg`}
+          sub="14日EMAで日々の水分ノイズを平滑化"
+          color="text-blue-400"
+        />
+        <ScienceCard
+          icon={<ShieldCheck size={15} />}
+          label="%BW/week"
+          value={weeklyPct == null ? "-- %" : `${weeklyPct.toFixed(2)}%`}
+          sub={inSafeZone ? "安全圏 0.5〜1.0%/週" : "安全圏 0.5〜1.0%/週を確認"}
+          color={inSafeZone ? "text-emerald-400" : "text-amber-400"}
+        />
+        <ScienceCard
+          icon={<Gauge size={15} />}
+          label="Dynamic TDEE"
+          value={data.scienceMetrics.dynamicTdee == null ? "-- kcal" : `${data.scienceMetrics.dynamicTdee.toLocaleString()} kcal`}
+          sub="14日摂取平均とTrend Weight変化から逆算"
+          color="text-purple-400"
+        />
+        <ScienceCard
+          icon={<Flame size={15} />}
+          label="Fat Cut Est."
+          value={data.scienceMetrics.estimatedFatMassCutKg == null ? "-- kg" : `${data.scienceMetrics.estimatedFatMassCutKg.toFixed(2)} kg`}
+          sub="累積アンダーカロリー ÷ 8,300kcal"
+          color="text-orange-400"
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-2.5">
         <StatBadge
-          label="Phase目標"
-          value={`${data.phaseTarget} kg`}
-          sub={`あと ${(data.currentWeight - data.phaseTarget).toFixed(1)} kg`}
+          label="現在値"
+          value={`${data.currentWeight} kg`}
+          sub={`生測定 / 開始比 -${lost.toFixed(1)}kg`}
           color="text-amber-400"
         />
         <StatBadge
-          label="週間ペース"
-          value={`-${data.weeklyLossRate} kg`}
-          sub="目標 -0.5～0.7 kg"
+          label="総合進捗"
+          value={`${progressPct}%`}
+          sub={`75kgまで あと ${remaining.toFixed(1)}kg`}
           color="text-emerald-400"
         />
       </div>
 
       {/* Weight chart */}
       <div className="bg-[#111827] border border-[#1e2d40] rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <Activity size={15} className="text-blue-400" />
-              <h2 className="text-sm font-semibold text-slate-200">体重推移</h2>
+              <h2 className="text-sm font-semibold text-slate-200">体重推移 & Trend Weight</h2>
           </div>
-          <div className="flex gap-2 text-[9px]">
+          <div className="flex flex-wrap justify-end gap-2 text-[9px]">
+            <span className="flex items-center gap-1 text-blue-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+              実測
+            </span>
+            <span className="flex items-center gap-1 text-cyan-300">
+              <span className="w-4 border-t-2 border-cyan-300" />
+              14日EMA
+            </span>
             <span className="flex items-center gap-1 text-amber-400">
               <span className="w-4 border-t border-amber-400 border-dashed" />
               Phase目標
@@ -139,13 +260,13 @@ export default function Dashboard({ data }: Props) {
         />
       </div>
 
-      {/* Milestones */}
+      {/* Roadmap */}
       <div className="bg-[#111827] border border-[#1e2d40] rounded-2xl p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Calendar size={15} className="text-purple-400" />
-          <h2 className="text-sm font-semibold text-slate-200">マイルストーン</h2>
+          <Route size={15} className="text-purple-400" />
+          <h2 className="text-sm font-semibold text-slate-200">3 Phase 減量ロードマップ</h2>
         </div>
-        <MilestoneCards milestones={data.milestones} currentWeight={data.currentWeight} startWeight={data.startWeight} />
+        <PhaseRoadmap phases={data.roadmapPhases} />
       </div>
 
       {/* Nutrition & Steps */}

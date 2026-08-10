@@ -43,10 +43,11 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
     return <div className="h-52 flex items-center justify-center text-slate-500 text-sm">データなし</div>;
   }
 
-  const validValues = data.map((d) => d.weight ?? 999).filter((v) => v < 999);
+  const validValues = data
+    .flatMap((d) => [d.weight, d.trendWeight])
+    .filter((v): v is number => typeof v === "number" && v > 0);
   const minWeight = validValues.length > 0 ? Math.min(...validValues) - 1 : phaseTarget - 5;
-  const maxValues = data.map((d) => d.weight ?? 0);
-  const maxWeight = maxValues.length > 0 ? Math.max(...maxValues) + 1 : phaseTarget + 5;
+  const maxWeight = validValues.length > 0 ? Math.max(...validValues) + 1 : phaseTarget + 5;
 
   return (
     <div className="w-full h-52">
@@ -77,12 +78,22 @@ export default function WeightChart({ data, phaseTarget, finalTarget }: Props) {
           <ReferenceLine y={finalTarget} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1} />
           <Line
             dataKey="weight"
-            name="実績"
+            name="実測"
             stroke="#3b82f6"
-            strokeWidth={2.5}
+            strokeWidth={0}
             dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
             activeDot={{ r: 5, fill: "#60a5fa" }}
             connectNulls={false}
+          />
+          <Line
+            dataKey="trendWeight"
+            name="Trend Weight"
+            stroke="#67e8f9"
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4, fill: "#a5f3fc" }}
+            connectNulls={false}
+            type="monotone"
           />
         </ComposedChart>
       </ResponsiveContainer>

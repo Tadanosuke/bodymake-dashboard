@@ -1,7 +1,8 @@
 export interface WeightEntry {
   date: string;
+  isoDate?: string;
   weight?: number;
-  predicted?: number;
+  trendWeight?: number;
   ideal: number;
 }
 
@@ -31,6 +32,31 @@ export interface TodayMetrics {
   fat:      { actual: number; target: number };
   carbs:    { actual: number; target: number };
   steps:    { actual: number; target: number };
+}
+
+export interface ScienceMetrics {
+  trendWeight: number | null;
+  weeklyBodyWeightChangePct: number | null;
+  dynamicTdee: number | null;
+  estimatedFatMassCutKg: number | null;
+}
+
+export interface RoadmapPhase {
+  id: 1 | 2 | 3;
+  name: string;
+  rangeLabel: string;
+  startWeight: number;
+  targetWeight: number;
+  targetWeeklyLossPct: number;
+  approxWeeklyLossKg: number;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  note?: string;
+  active: boolean;
+  completed: boolean;
+  progressPct: number;
 }
 
 export interface MorningSyncStatus {
@@ -88,6 +114,8 @@ export interface DashboardData {
   weeklyLossRate:    number;
   weightHistory:     WeightEntry[];
   milestones:        Milestone[];
+  scienceMetrics:    ScienceMetrics;
+  roadmapPhases:     RoadmapPhase[];
   today:             TodayMetrics;
   morningSync:       MorningSyncStatus;
   logs:              LogEntry[];
