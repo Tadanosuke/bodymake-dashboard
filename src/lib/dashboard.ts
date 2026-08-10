@@ -9,6 +9,7 @@ import type {
   AIPlan,
   MorningSyncStatus,
   ScienceMetrics,
+  RecoveryMetrics,
   RoadmapPhase,
 } from './types';
 import type { DailyLogFS } from './firestore';
@@ -22,6 +23,10 @@ export const FINAL_TARGET_DATE = '2027-01-31';
 
 const EMA_ALPHA = 0.133;
 const KCAL_PER_KG_FAT = 8300;
+const LBM_KG = 70.2;
+const PROTEIN_TARGET_MIN = 155;
+const PROTEIN_TARGET_MAX = 175;
+const WEEKLY_CARDIO_LIMIT_MINUTES = 180;
 
 const ROADMAP_BASE: Omit<RoadmapPhase, 'active' | 'completed' | 'progressPct'>[] = [
   {
@@ -70,7 +75,7 @@ const ROADMAP_BASE: Omit<RoadmapPhase, 'active' | 'completed' | 'progressPct'>[]
 export interface GasLog {
   date: string;
   weight?: number; calories?: number; protein?: number;
-  fat?: number; carbs?: number; steps?: number; workout?: string; memo?: string;
+  fat?: number; carbs?: number; steps?: number; workout?: string; cardio?: string; memo?: string;
 }
 
 export interface GasResponse {
@@ -104,6 +109,21 @@ const EMPTY_SCIENCE_METRICS: ScienceMetrics = {
   weeklyBodyWeightChangePct: null,
   dynamicTdee: null,
   estimatedFatMassCutKg: null,
+};
+
+const EMPTY_RECOVERY_METRICS: RecoveryMetrics = {
+  sleepHours: null,
+  sleepStatus: '睡眠データ未反映',
+  sleepLevel: 'unknown',
+  consecutiveTrainingWeeks: 0,
+  deloadRecommended: false,
+  weeklyCardioMinutes: 0,
+  weeklyCardioLimit: WEEKLY_CARDIO_LIMIT_MINUTES,
+  cardioOverLimit: false,
+  lbmKg: LBM_KG,
+  proteinTargetMin: PROTEIN_TARGET_MIN,
+  proteinTargetMax: PROTEIN_TARGET_MAX,
+  proteinProgressPct: 0,
 };
 
 function round(value: number, digits = 1): number {
@@ -227,6 +247,10 @@ function computeScienceMetrics(logsDesc: LogEntry[], weightHistory: WeightEntry[
 }
 
 function dateKey(d = new Date()): string {
+  return formatDateLocal(d);
+}
+
+function formatDateLocal(d: Date): string {
   return d.toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: '2-digit',
@@ -237,7 +261,7 @@ function dateKey(d = new Date()): string {
 function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatDateLocal(d);
 }
 
 function parseMorningMemo(memo: string): Record<'睡眠' | '筋肉痛' | '今日' | '朝食', string> {
@@ -250,6 +274,97 @@ function parseMorningMemo(memo: string): Record<'睡眠' | '筋肉痛' | '今日
     out[key] = m[2].replace(/^[\s/／]+|[\s/／]+$/g, '').trim();
   }
   return out;
+}
+
+function parseSleepHours(text: string): number | null {
+  const normalized = String(text || '').replace(/[０-９．]/g, (ch) => {
+    if (ch === '．') return '.';
+    return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
+  });
+  const m = normalized.match(/(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+function sleepStatus(hours: number | null): Pick<RecoveryMetrics, 'sleepStatus' | 'sleepLevel'> {
+  if (hours == null) return { sleepStatus: '睡眠データ未反映', sleepLevel: 'unknown' };
+  if (hours >= 7) return { sleepStatus: '🟢 筋肉保護・アナボリック正常', sleepLevel: 'good' };
+  if (hours >= 6) return { sleepStatus: '🟡 やや睡眠不足（アナボリック注意）', sleepLevel: 'caution' };
+  if (hours < 5.5) return { sleepStatus: '🔴 警告: 筋肉分解・アナボリック抵抗性発現リスク高', sleepLevel: 'risk' };
+  return { sleepStatus: '🟡 睡眠不足（筋肉保護を優先）', sleepLevel: 'caution' };
+}
+
+function parseDurationMinutes(text: string): number {
+  const normalized = String(text || '').replace(/[０-９．]/g, (ch) => {
+    if (ch === '．') return '.';
+    return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
+  });
+  let total = 0;
+  const hourRe = /(\d+(?:\.\d+)?)\s*(?:時間|h|hr|hrs|hour|hours)/gi;
+  const minuteRe = /(\d+(?:\.\d+)?)\s*(?:分|m|min|mins|minute|minutes)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = hourRe.exec(normalized)) !== null) total += parseFloat(m[1]) * 60;
+  while ((m = minuteRe.exec(normalized)) !== null) total += parseFloat(m[1]);
+  if (total > 0) return Math.round(total);
+  const fallback = normalized.match(/(\d+(?:\.\d+)?)/);
+  return fallback ? Math.round(parseFloat(fallback[1])) : 0;
+}
+
+function parseLocalDate(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00`);
+}
+
+function weekStart(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return formatDateLocal(d);
+}
+
+function computeConsecutiveTrainingWeeks(logsDesc: LogEntry[], today: string): number {
+  const trainedWeeks = new Set(
+    logsDesc
+      .filter((l) => {
+        const workout = String(l.workout || '').trim();
+        return workout.length > 0 && !/休養|休み|オフ|ウォーキング|ランニング|有酸素|ストレッチ/i.test(workout);
+      })
+      .map((l) => weekStart(l.date))
+  );
+  let cursor = weekStart(today);
+  let count = 0;
+  for (let i = 0; i < 12; i++) {
+    if (!trainedWeeks.has(cursor)) break;
+    count += 1;
+    cursor = addDays(cursor, -7);
+  }
+  return count;
+}
+
+function computeRecoveryMetrics(logsDesc: LogEntry[], morningSync: MorningSyncStatus, todayMetrics: { protein: { actual: number } }): RecoveryMetrics {
+  const today = dateKey();
+  const sleepHours = parseSleepHours(morningSync.sleep);
+  const sleep = sleepStatus(sleepHours);
+  const currentWeekStart = weekStart(today);
+  const weeklyCardioMinutes = logsDesc
+    .filter((l) => l.date >= currentWeekStart && l.date <= today)
+    .reduce((sum, l) => sum + parseDurationMinutes(l.cardio), 0);
+  const consecutiveTrainingWeeks = computeConsecutiveTrainingWeeks(logsDesc, today);
+  const proteinProgressPct = Math.max(0, Math.min(120, Math.round((todayMetrics.protein.actual / PROTEIN_TARGET_MIN) * 100)));
+
+  return {
+    sleepHours,
+    sleepStatus: sleep.sleepStatus,
+    sleepLevel: sleep.sleepLevel,
+    consecutiveTrainingWeeks,
+    deloadRecommended: consecutiveTrainingWeeks >= 4,
+    weeklyCardioMinutes,
+    weeklyCardioLimit: WEEKLY_CARDIO_LIMIT_MINUTES,
+    cardioOverLimit: weeklyCardioMinutes > WEEKLY_CARDIO_LIMIT_MINUTES,
+    lbmKg: LBM_KG,
+    proteinTargetMin: PROTEIN_TARGET_MIN,
+    proteinTargetMax: PROTEIN_TARGET_MAX,
+    proteinProgressPct,
+  };
 }
 
 function buildMorningSync(logs: LogEntry[], aiPlan: AIPlan | null): MorningSyncStatus {
@@ -312,6 +427,7 @@ export function buildDashboard(
         weight:   fs?.weight   ?? gas?.weight   ?? 0,
         steps:    fs?.steps    ?? gas?.steps    ?? 0,
         workout:  fs?.workout  ?? gas?.workout  ?? '',
+        cardio:   gas?.cardio   ?? '',
         memo:     gas?.memo     ?? '',
         calories: gas?.calories ?? 0,
         protein:  gas?.protein  ?? 0,
@@ -333,6 +449,7 @@ export function buildDashboard(
       weightHistory:     [],
       milestones:        milestones(0),
       scienceMetrics:    EMPTY_SCIENCE_METRICS,
+      recoveryMetrics:   EMPTY_RECOVERY_METRICS,
       roadmapPhases,
       today: {
         calories: { actual: 0, target: activePhase.calories },
@@ -357,6 +474,14 @@ export function buildDashboard(
   const activePhase = roadmapPhases.find(p => p.active) ?? roadmapPhases.find(p => !p.completed) ?? roadmapPhases[roadmapPhases.length - 1];
   const todayLog = logs.find(l => l.date === dateKey()) ?? logs[0];
   const weightHistory = addTargetGuideline(measuredWeightHistory, currentWeight);
+  const today = {
+    calories: { actual: todayLog?.calories ?? 0, target: activePhase.calories },
+    protein:  { actual: todayLog?.protein  ?? 0, target: activePhase.protein },
+    fat:      { actual: todayLog?.fat      ?? 0, target: activePhase.fat },
+    carbs:    { actual: todayLog?.carbs    ?? 0, target: activePhase.carbs },
+    steps:    { actual: todayLog?.steps    ?? 0, target: 8000 },
+  };
+  const morningSync = buildMorningSync(logs, aiPlan);
 
   return {
     ...BASE,
@@ -366,15 +491,10 @@ export function buildDashboard(
     weightHistory,
     milestones: milestones(currentWeight),
     scienceMetrics,
+    recoveryMetrics: computeRecoveryMetrics(logs, morningSync, today),
     roadmapPhases,
-    today: {
-      calories: { actual: todayLog?.calories ?? 0, target: activePhase.calories },
-      protein:  { actual: todayLog?.protein  ?? 0, target: activePhase.protein },
-      fat:      { actual: todayLog?.fat      ?? 0, target: activePhase.fat },
-      carbs:    { actual: todayLog?.carbs    ?? 0, target: activePhase.carbs },
-      steps:    { actual: todayLog?.steps    ?? 0, target: 8000 },
-    },
-    morningSync: buildMorningSync(logs, aiPlan),
+    today,
+    morningSync,
     logs,
     aiPlan,
   };

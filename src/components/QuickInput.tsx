@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   AlertCircle, CheckCircle2, Dumbbell, Footprints, Pencil,
-  RefreshCw, Scale, Send, Sparkles, Utensils,
+  Moon, RefreshCw, Scale, Send, Sparkles, Utensils,
 } from "lucide-react";
 import { getDailyLog, saveDailyLog } from "@/lib/firestore";
 import { useCurrentUser } from "./AuthGate";
@@ -65,6 +65,13 @@ export default function QuickInput({ onSubmit, gasEndpoint = '', data, onRefresh
   const todayLog = data?.logs.find(l => l.date === today);
   const aiPlan = data?.aiPlan;
   const hasWeight = Boolean(todayLog?.weight);
+  const sleepTone = data?.recoveryMetrics.sleepLevel === 'good'
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    : data?.recoveryMetrics.sleepLevel === 'risk'
+      ? 'border-red-500/30 bg-red-500/10 text-red-300'
+      : data?.recoveryMetrics.sleepLevel === 'caution'
+        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+        : 'border-blue-500/30 bg-blue-500/10 text-blue-300';
 
   useEffect(() => {
     if (todayLog?.weight) setWeight(String(todayLog.weight));
@@ -166,6 +173,19 @@ export default function QuickInput({ onSubmit, gasEndpoint = '', data, onRefresh
           value={sync?.breakfast ?? ''}
           icon={<Utensils size={12} className="text-amber-400" />}
         />
+      </div>
+
+      <div className={`mb-3 rounded-2xl border p-4 ${sleepTone}`}>
+        <div className="mb-1 flex items-center gap-2">
+          <Moon size={14} />
+          <p className="text-xs font-black">睡眠アナボリック＆筋肉保護</p>
+        </div>
+        <p className="text-sm font-bold text-slate-100">
+          {data?.recoveryMetrics.sleepStatus ?? '睡眠データ未反映'}
+        </p>
+        <p className="mt-1 text-[10px] text-slate-400">
+          {data?.recoveryMetrics.sleepHours == null ? 'K列の睡眠報告待ち' : `${data.recoveryMetrics.sleepHours.toFixed(1)}時間`}
+        </p>
       </div>
 
       <div className="mb-3 rounded-2xl border border-[#1e2d40] bg-[#111827] p-4">

@@ -16,6 +16,7 @@ export interface LogEntry {
   carbs: number;
   steps: number;
   workout: string;
+  cardio: string;
   memo?: string;
 }
 
@@ -40,6 +41,21 @@ export interface ScienceMetrics {
   weeklyBodyWeightChangePct: number | null;
   dynamicTdee: number | null;
   estimatedFatMassCutKg: number | null;
+}
+
+export interface RecoveryMetrics {
+  sleepHours: number | null;
+  sleepStatus: string;
+  sleepLevel: 'good' | 'caution' | 'risk' | 'unknown';
+  consecutiveTrainingWeeks: number;
+  deloadRecommended: boolean;
+  weeklyCardioMinutes: number;
+  weeklyCardioLimit: number;
+  cardioOverLimit: boolean;
+  lbmKg: number;
+  proteinTargetMin: number;
+  proteinTargetMax: number;
+  proteinProgressPct: number;
 }
 
 export interface RoadmapPhase {
@@ -116,6 +132,7 @@ export interface DashboardData {
   weightHistory:     WeightEntry[];
   milestones:        Milestone[];
   scienceMetrics:    ScienceMetrics;
+  recoveryMetrics:   RecoveryMetrics;
   roadmapPhases:     RoadmapPhase[];
   today:             TodayMetrics;
   morningSync:       MorningSyncStatus;

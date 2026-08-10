@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { TrendingDown, Zap, Activity, Flame, Sparkles, Dumbbell, Gauge, ShieldCheck, Scale, Route } from "lucide-react";
+import { TrendingDown, Zap, Activity, Flame, Sparkles, Dumbbell, Gauge, ShieldCheck, Scale, Route, Moon, RotateCcw, Timer, Beef } from "lucide-react";
 import NutritionMeters from "./NutritionMeters";
 import type { DashboardData, RoadmapPhase } from "@/lib/types";
 
@@ -100,6 +100,56 @@ function PhaseRoadmap({ phases }: { phases: RoadmapPhase[] }) {
   );
 }
 
+function MiniMeter({ value, limit, color }: { value: number; limit: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round((value / limit) * 100)));
+  return (
+    <div className="mt-2 h-2 rounded-full bg-[#1e2d40]">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function RecoveryCard({
+  icon,
+  title,
+  value,
+  sub,
+  tone,
+  meter,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: string;
+  sub: string;
+  tone: 'emerald' | 'amber' | 'red' | 'blue';
+  meter?: { value: number; limit: number };
+}) {
+  const toneClass = {
+    emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+    red: 'border-red-500/30 bg-red-500/10 text-red-300',
+    blue: 'border-blue-500/30 bg-blue-500/10 text-blue-300',
+  }[tone];
+  const meterColor = {
+    emerald: 'bg-emerald-400',
+    amber: 'bg-amber-400',
+    red: 'bg-red-400',
+    blue: 'bg-blue-400',
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border p-3 ${toneClass}`}>
+      <div className="mb-2 flex items-center gap-2">
+        {icon}
+        <p className="text-[10px] font-bold uppercase tracking-wide">{title}</p>
+      </div>
+      <p className="text-sm font-black leading-snug text-slate-100">{value}</p>
+      <p className="mt-1 text-[10px] leading-snug text-slate-400">{sub}</p>
+      {meter && <MiniMeter value={meter.value} limit={meter.limit} color={meterColor} />}
+    </div>
+  );
+}
+
 export default function Dashboard({ data }: Props) {
   // Empty state for new users
   if (data.isEmpty || data.currentWeight === 0) {
@@ -131,6 +181,10 @@ export default function Dashboard({ data }: Props) {
   const weeklyCals = last7Logs.reduce((sum, l) => sum + (l.calories || 0), 0);
   const weeklyTarget = data.today.calories.target * 7;
   const weeklyBalance = weeklyCals - weeklyTarget;
+  const recovery = data.recoveryMetrics;
+  const sleepTone = recovery.sleepLevel === 'good' ? 'emerald' : recovery.sleepLevel === 'risk' ? 'red' : recovery.sleepLevel === 'caution' ? 'amber' : 'blue';
+  const cardioTone = recovery.cardioOverLimit ? 'red' : recovery.weeklyCardioMinutes >= 135 ? 'amber' : 'emerald';
+  const proteinTone = data.today.protein.actual >= recovery.proteinTargetMin ? 'emerald' : data.today.protein.actual >= recovery.proteinTargetMin * 0.8 ? 'amber' : 'red';
 
   return (
     <div className="px-4 pb-4 space-y-4 fade-in">
@@ -225,6 +279,46 @@ export default function Dashboard({ data }: Props) {
           sub={`75kgまで あと ${remaining.toFixed(1)}kg`}
           color="text-emerald-400"
         />
+      </div>
+
+      {/* Recovery & muscle protection indicators */}
+      <div className="bg-[#111827] border border-[#1e2d40] rounded-2xl p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <ShieldCheck size={15} className="text-emerald-400" />
+          <h2 className="text-sm font-semibold text-slate-200">筋肉保護インジケーター</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <RecoveryCard
+            icon={<Moon size={14} />}
+            title="睡眠アナボリック"
+            value={recovery.sleepStatus}
+            sub={recovery.sleepHours == null ? 'K列の睡眠報告待ち' : `${recovery.sleepHours.toFixed(1)}時間`}
+            tone={sleepTone}
+          />
+          <RecoveryCard
+            icon={<RotateCcw size={14} />}
+            title="ディロード"
+            value={recovery.deloadRecommended ? '💡 ディロード推奨週' : '通常トレーニング週'}
+            sub={`${recovery.consecutiveTrainingWeeks}週連続 / 推奨時はセット数50%`}
+            tone={recovery.deloadRecommended ? 'amber' : 'blue'}
+          />
+          <RecoveryCard
+            icon={<Timer size={14} />}
+            title="有酸素FatMax"
+            value={recovery.cardioOverLimit ? '⚠️ 有酸素過剰による筋分解干渉注意' : `${recovery.weeklyCardioMinutes} / ${recovery.weeklyCardioLimit}分`}
+            sub="1回30〜45分、週3〜4回 LISS/水中歩行"
+            tone={cardioTone}
+            meter={{ value: recovery.weeklyCardioMinutes, limit: recovery.weeklyCardioLimit }}
+          />
+          <RecoveryCard
+            icon={<Beef size={14} />}
+            title="LBMタンパク質"
+            value={`${data.today.protein.actual}g / ${recovery.proteinTargetMin}〜${recovery.proteinTargetMax}g`}
+            sub={`LBM ${recovery.lbmKg}kg × 2.2〜2.5g/kg`}
+            tone={proteinTone}
+            meter={{ value: data.today.protein.actual, limit: recovery.proteinTargetMin }}
+          />
+        </div>
       </div>
 
       {/* Weight chart */}
