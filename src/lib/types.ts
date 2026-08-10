@@ -14,6 +14,7 @@ export interface LogEntry {
   carbs: number;
   steps: number;
   workout: string;
+  memo?: string;
 }
 
 export interface Milestone {
@@ -30,6 +31,20 @@ export interface TodayMetrics {
   fat:      { actual: number; target: number };
   carbs:    { actual: number; target: number };
   steps:    { actual: number; target: number };
+}
+
+export interface MorningSyncStatus {
+  date: string;
+  yesterdayDate: string;
+  yesterdaySteps: number;
+  memo: string;
+  sleep: string;
+  doms: string;
+  todayPlan: string;
+  breakfast: string;
+  hasMorningReport: boolean;
+  aiPlanReady: boolean;
+  aiPlanDate?: string;
 }
 
 /** Gemini が指定した1セット分の内訳 */
@@ -74,6 +89,7 @@ export interface DashboardData {
   weightHistory:     WeightEntry[];
   milestones:        Milestone[];
   today:             TodayMetrics;
+  morningSync:       MorningSyncStatus;
   logs:              LogEntry[];
   aiPlan?:           AIPlan | null;
 }

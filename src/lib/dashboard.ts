@@ -2,10 +2,10 @@
 // Firestore はユーザー認証済みのブラウザ側でしか読めないため（サーバーの
 // serverless 関数から client SDK を呼ぶとルールで拒否され、かつ数十秒ハングする）、
 // マージと集計はここに切り出してクライアントで実行する。
-import type { DashboardData, WeightEntry, LogEntry, AIPlan } from './types';
+import type { DashboardData, WeightEntry, LogEntry, AIPlan, MorningSyncStatus } from './types';
 import type { DailyLogFS } from './firestore';
 
-export const START_WEIGHT      = 92.5;
+export const START_WEIGHT      = 90.0;
 export const START_DATE        = '2026-07-01';
 export const FINAL_TARGET      = 75.0;
 export const PHASE_TARGET      = 87.0;
@@ -15,7 +15,7 @@ export const FINAL_TARGET_DATE = '2027-01-31';
 export interface GasLog {
   date: string;
   weight?: number; calories?: number; protein?: number;
-  fat?: number; carbs?: number; steps?: number; workout?: string;
+  fat?: number; carbs?: number; steps?: number; workout?: string; memo?: string;
 }
 
 export interface GasResponse {
@@ -30,7 +30,7 @@ function daysTo(dateStr: string): number {
 
 function computeIdeal(dateStr: string): number {
   const daysSinceStart = (new Date(dateStr).getTime() - new Date(START_DATE).getTime()) / 86400000;
-  return Math.max(START_WEIGHT - (daysSinceStart / 214) * 17.5, FINAL_TARGET);
+  return Math.max(START_WEIGHT - (daysSinceStart / 214) * (START_WEIGHT - FINAL_TARGET), FINAL_TARGET);
 }
 
 function milestones(currentWeight: number) {
@@ -42,6 +42,53 @@ function milestones(currentWeight: number) {
     { weight: 77, label: 'Phase 5',  idealDate: '2026-12-20' },
     { weight: 75, label: '最終目標', idealDate: '2027-01-31' },
   ].map(m => ({ ...m, achieved: currentWeight > 0 && currentWeight <= m.weight }));
+}
+
+function dateKey(d = new Date()): string {
+  return d.toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).replace(/\//g, '-');
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function memoPart(memo: string, key: string): string {
+  const found = String(memo || '')
+    .split(' / ')
+    .map(s => s.trim())
+    .find(s => s.startsWith(`${key}:`));
+  return found ? found.slice(key.length + 1).trim() : '';
+}
+
+function buildMorningSync(logs: LogEntry[], aiPlan: AIPlan | null): MorningSyncStatus {
+  const today = dateKey();
+  const yesterday = addDays(today, -1);
+  const todayLog = logs.find(l => l.date === today);
+  const yesterdayLog = logs.find(l => l.date === yesterday);
+  const memo = todayLog?.memo ?? '';
+  const sleep = memoPart(memo, '睡眠');
+  const doms = memoPart(memo, '筋肉痛');
+  const todayPlan = memoPart(memo, '今日');
+  const breakfast = memoPart(memo, '朝食');
+  return {
+    date: today,
+    yesterdayDate: yesterday,
+    yesterdaySteps: yesterdayLog?.steps ?? 0,
+    memo,
+    sleep,
+    doms,
+    todayPlan,
+    breakfast,
+    hasMorningReport: Boolean(sleep || doms || todayPlan || breakfast || (yesterdayLog?.steps ?? 0) > 0),
+    aiPlanReady: aiPlan?.date === today,
+    aiPlanDate: aiPlan?.date,
+  };
 }
 
 const BASE = {
@@ -78,6 +125,7 @@ export function buildDashboard(
         weight:   fs?.weight   ?? gas?.weight   ?? 0,
         steps:    fs?.steps    ?? gas?.steps    ?? 0,
         workout:  fs?.workout  ?? gas?.workout  ?? '',
+        memo:     gas?.memo     ?? '',
         calories: gas?.calories ?? 0,
         protein:  gas?.protein  ?? 0,
         fat:      gas?.fat      ?? 0,
@@ -86,7 +134,7 @@ export function buildDashboard(
     });
 
   // データがまったく無い新規ユーザー → 空状態（モックは返さない）
-  if (logs.every(l => !l.weight && !l.calories)) {
+  if (logs.every(l => !l.weight && !l.calories && !l.steps && !l.memo && !l.workout) && !aiPlan) {
     return {
       ...BASE,
       isEmpty:           true,
@@ -102,6 +150,7 @@ export function buildDashboard(
         carbs:    { actual: 0, target: 180 },
         steps:    { actual: 0, target: 8000 },
       },
+      morningSync: buildMorningSync([], aiPlan),
       logs: [],
       aiPlan,
     };
@@ -114,28 +163,15 @@ export function buildDashboard(
     ideal:  computeIdeal(l.date),
   }));
 
-  // 12週先までの予測線
-  if (withWeight.length > 0) {
-    const last       = withWeight[withWeight.length - 1];
-    const lastDate   = new Date(last.date);
-    const lossPerDay = 0.55 / 7;
-    for (let w = 1; w <= 12; w++) {
-      const d = new Date(lastDate);
-      d.setDate(d.getDate() + w * 7);
-      const ds = d.toISOString().slice(0, 10);
-      weightHistory.push({
-        date:      ds.slice(5).replace('-', '/'),
-        predicted: Math.max(last.weight - lossPerDay * w * 7, FINAL_TARGET),
-        ideal:     computeIdeal(ds),
-      });
-    }
-  }
-
   const currentWeight = withWeight.length > 0 ? withWeight[withWeight.length - 1].weight : START_WEIGHT;
-  const todayLog = logs[0];
+  const observedStartWeight = withWeight.length > 0
+    ? Math.max(...withWeight.map(l => l.weight))
+    : START_WEIGHT;
+  const todayLog = logs.find(l => l.date === dateKey()) ?? logs[0];
 
   return {
     ...BASE,
+    startWeight: observedStartWeight,
     currentWeight,
     daysToPhaseTarget: daysTo(PHASE_TARGET_DATE),
     daysToFinalTarget: daysTo(FINAL_TARGET_DATE),
@@ -148,6 +184,7 @@ export function buildDashboard(
       carbs:    { actual: todayLog?.carbs    ?? 0, target: 180 },
       steps:    { actual: todayLog?.steps    ?? 0, target: 8000 },
     },
+    morningSync: buildMorningSync(logs, aiPlan),
     logs,
     aiPlan,
   };

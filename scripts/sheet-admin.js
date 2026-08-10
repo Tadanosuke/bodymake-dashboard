@@ -2,10 +2,16 @@
 // Minimal spreadsheet admin client for the existing GAS endpoint.
 // Usage:
 //   npm run sheet:list
+//   npm run sheet:setup-governance
 //   npm run sheet:read -- "シート名" "A1:K5"
 //   npm run sheet:write -- "シート名" "A1" "text"
+//   npm run sheet:write-file -- "シート名" "A1" "path/to/file.md"
 //   npm run sheet:clear -- "シート名" "A1"
 //   npm run sheet:write-json -- "シート名" "A1:B2" "[[1,2],[3,4]]"
+//   npm run sheet:log-change -- "{\"actor\":\"Codex\",\"summary\":\"...\"}"
+//   npm run sheet:log-meeting -- "{\"actor\":\"Codex\",\"summary\":\"...\"}"
+//   npm run sheet:log-change-simple -- "Codex" "tool" "target" "type" "summary" "reason" "yes" "related"
+//   npm run sheet:log-meeting-simple -- "Codex" "source" "summary" "decisions" "actions" "affected"
 
 const fs = require('fs');
 const path = require('path');
@@ -71,6 +77,13 @@ function printTable(values) {
     return;
   }
 
+  if (command === 'setup-governance') {
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const json = await post({ action: 'setupAiGovernance', adminToken, actor: 'Codex', tool: 'sheet-admin' });
+    console.log(`Configured AI governance tabs: ${(json.sheets || []).join(', ')}`);
+    return;
+  }
+
   if (command === 'read') {
     if (!sheet || !range) throw new Error('Usage: read <sheet> <range>');
     if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
@@ -85,6 +98,16 @@ function printTable(values) {
     if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
     const json = await post({ action: 'updateRange', sheet, range, value: raw || '', adminToken });
     console.log(`Updated ${json.sheet}!${json.range} (${json.rows}x${json.columns})`);
+    return;
+  }
+
+  if (command === 'write-file') {
+    if (!sheet || !range || !raw) throw new Error('Usage: write-file <sheet> <range> <file>');
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const filePath = path.resolve(process.cwd(), raw);
+    const value = fs.readFileSync(filePath, 'utf8');
+    const json = await post({ action: 'updateRange', sheet, range, value, adminToken });
+    console.log(`Updated ${json.sheet}!${json.range} from ${filePath} (${value.length} chars)`);
     return;
   }
 
@@ -105,7 +128,61 @@ function printTable(values) {
     return;
   }
 
-  console.error('Usage: sheet-admin.js <list|read|write|clear|write-json> ...');
+  if (command === 'log-change') {
+    if (!sheet) throw new Error('Usage: log-change <json-payload>');
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const payload = JSON.parse(sheet);
+    const json = await post({ action: 'appendAiChangeLog', ...payload, adminToken });
+    console.log(`Logged change to ${json.sheet} row ${json.row}`);
+    return;
+  }
+
+  if (command === 'log-change-simple') {
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const [actor, tool, target, changeType, summary, reason, userConfirmed, related] = process.argv.slice(3);
+    const json = await post({
+      action: 'appendAiChangeLog',
+      actor,
+      tool,
+      target,
+      changeType,
+      summary,
+      reason,
+      userConfirmed,
+      related,
+      adminToken,
+    });
+    console.log(`Logged change to ${json.sheet} row ${json.row}`);
+    return;
+  }
+
+  if (command === 'log-meeting') {
+    if (!sheet) throw new Error('Usage: log-meeting <json-payload>');
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const payload = JSON.parse(sheet);
+    const json = await post({ action: 'appendAiMeetingNote', ...payload, adminToken });
+    console.log(`Logged meeting note to ${json.sheet} row ${json.row}`);
+    return;
+  }
+
+  if (command === 'log-meeting-simple') {
+    if (!adminToken) throw new Error('SHEET_ADMIN_TOKEN is not set.');
+    const [actor, conversationSource, summary, decisions, actionItems, affectedDocsOrTabs] = process.argv.slice(3);
+    const json = await post({
+      action: 'appendAiMeetingNote',
+      actor,
+      conversationSource,
+      summary,
+      decisions,
+      actionItems,
+      affectedDocsOrTabs,
+      adminToken,
+    });
+    console.log(`Logged meeting note to ${json.sheet} row ${json.row}`);
+    return;
+  }
+
+  console.error('Usage: sheet-admin.js <list|setup-governance|read|write|write-file|clear|write-json|log-change|log-meeting|log-change-simple|log-meeting-simple> ...');
   process.exit(1);
 })().catch((e) => {
   console.error(e.message);

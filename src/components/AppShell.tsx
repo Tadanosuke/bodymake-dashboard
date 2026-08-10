@@ -138,7 +138,14 @@ function AppShellInner() {
         {activeTab === "home" && (
           data ? <Dashboard data={data} /> : <LoadingPane />
         )}
-        {activeTab === "today"   && <QuickInput onSubmit={handleLogSubmit} gasEndpoint={gasEndpoint ?? ''} />}
+        {activeTab === "today" && (
+          <QuickInput
+            onSubmit={handleLogSubmit}
+            gasEndpoint={gasEndpoint ?? ''}
+            data={data}
+            onRefresh={() => setRefreshKey((k) => k + 1)}
+          />
+        )}
         {activeTab === "workout" && (
           <WorkoutTab aiPlan={data?.aiPlan} gasEndpoint={gasEndpoint ?? ''} logs={data?.logs ?? []} />
         )}

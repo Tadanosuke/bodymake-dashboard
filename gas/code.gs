@@ -53,6 +53,9 @@ function doPost(e) {
     if (action === 'listSheets')    return respond(listSheets());
     if (action === 'appendLog')     return respond(appendLog(payload));
     if (action === 'updateAppSpec') return respond(updateAppSpec(payload));
+    if (action === 'setupAiGovernance') return respond(setupAiGovernance(payload));
+    if (action === 'appendAiChangeLog') return respond(appendAiChangeLog(payload));
+    if (action === 'appendAiMeetingNote') return respond(appendAiMeetingNote(payload));
     if (action === 'getRange')      return respond(getRange(payload));
     if (action === 'updateRange')   return respond(updateRange(payload));
     return respond({ error: 'Unknown action: ' + action });
@@ -181,6 +184,136 @@ function updateRange(payload) {
   };
 }
 
+const AI_RULES_SHEET_NAME = 'AI運用ルール_必読';
+const AI_CHANGE_LOG_SHEET_NAME = 'AI変更履歴';
+const AI_MEETING_NOTES_SHEET_NAME = 'AI会話議事録';
+
+const AI_RULES_ROWS = [
+  ['AI三者運用ルール（必読）', 'Claude Code / Codex / Gemini Spark must read this tab before changing spreadsheet data, app specs, or implementation assumptions.'],
+  ['最終更新', '2026-08-10'],
+  ['目的', '3つのAIが同じ正本を参照し、勝手な変更や古い前提による誤実装を防ぐ。'],
+  ['必読順序', '1. このタブ  2. AI変更履歴の最新20件  3. AI会話議事録の最新20件  4. アプリ仕様_Claude→Gemini  5. Google Docs 指示書  6. CLAUDE_MD_MASTER / AGENTS.md'],
+  ['Google Docs指示書', 'Gemini Spark が毎回参照する最上位指示書: https://docs.google.com/document/d/1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY/edit?usp=sharing'],
+  ['編集前ルール', 'シートやアプリ仕様を変える前に、対象タブ・列の所有者を確認する。B列体重とI列筋トレ実績はアプリ領域。H列歩数、K列の睡眠/筋肉痛/今日/朝食、C-F栄養はGemini領域。'],
+  ['編集後ルール', 'シート、GAS、アプリ、仕様文書を変更したAIは、AI変更履歴へ日時・担当AI・対象・内容・理由・ユーザー確認有無を残す。'],
+  ['会話記録ルール', 'ユーザーとの会話で要件、運用、食事/運動方針、データ書式、AI役割が変わった場合、AI会話議事録へ要約・決定事項・次アクションを残す。'],
+  ['Docs更新ルール', 'Geminiの日常コーチングや毎回参照する前提が変わる場合は、Google Docs 指示書にも反映する。直接編集できないAIはDocs更新待ちをログに残し、ユーザーに依頼する。'],
+  ['正本', '運用ルールはこのタブ。Gemini最上位指示はGoogle Docs指示書。アプリ仕様はアプリ仕様_Claude→Gemini。Claude/Codex作業手順はCLAUDE.md/AGENTS.md。日次データは総合管理シート。'],
+  ['競合時', '不明点や矛盾があれば推測で上書きせず、ユーザーに確認する。既存データを消す変更は必ず明示確認を取る。'],
+  ['Codex/Claude', '開発・データ解析担当。変更後はdocs/GEMINI_BRIEF.mdを更新し、必要ならsync-geminiでGeminiへ申し送る。'],
+  ['Gemini Spark', '日常コーチ・食事解析・朝食後の当日計画担当。AI次回計画メニューは進捗＆予測ダッシュボードに書き、実績I列は触らない。'],
+];
+
+const AI_CHANGE_LOG_HEADERS = [
+  'timestamp',
+  'actor',
+  'tool',
+  'target',
+  'change_type',
+  'summary',
+  'reason',
+  'user_confirmed',
+  'related_commit_or_range',
+];
+
+const AI_MEETING_NOTES_HEADERS = [
+  'timestamp',
+  'actor',
+  'conversation_source',
+  'summary',
+  'decisions',
+  'action_items',
+  'affected_docs_or_tabs',
+];
+
+function ensureSheet_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function setupAiGovernance(payload) {
+  requireAdmin_(payload);
+  const ss = getSS();
+
+  const rules = ensureSheet_(ss, AI_RULES_SHEET_NAME);
+  rules.clear();
+  rules.getRange(1, 1, AI_RULES_ROWS.length, 2).setValues(AI_RULES_ROWS);
+  rules.getRange(1, 1, 1, 2).setFontWeight('bold');
+  rules.getRange(1, 1, AI_RULES_ROWS.length, 2).setWrap(true).setVerticalAlignment('top');
+  rules.setFrozenRows(1);
+  rules.setColumnWidth(1, 180);
+  rules.setColumnWidth(2, 900);
+
+  const changes = ensureSheet_(ss, AI_CHANGE_LOG_SHEET_NAME);
+  if (changes.getLastRow() === 0) {
+    changes.getRange(1, 1, 1, AI_CHANGE_LOG_HEADERS.length).setValues([AI_CHANGE_LOG_HEADERS]).setFontWeight('bold');
+    changes.setFrozenRows(1);
+  }
+
+  const notes = ensureSheet_(ss, AI_MEETING_NOTES_SHEET_NAME);
+  if (notes.getLastRow() === 0) {
+    notes.getRange(1, 1, 1, AI_MEETING_NOTES_HEADERS.length).setValues([AI_MEETING_NOTES_HEADERS]).setFontWeight('bold');
+    notes.setFrozenRows(1);
+  }
+
+  appendAiChangeLog(Object.assign({}, payload, {
+    actor: payload.actor || 'Codex',
+    tool: payload.tool || 'GAS',
+    target: AI_RULES_SHEET_NAME + ' / ' + AI_CHANGE_LOG_SHEET_NAME + ' / ' + AI_MEETING_NOTES_SHEET_NAME,
+    changeType: 'governance_setup',
+    summary: 'Created/updated mandatory AI coordination tabs and logging protocol.',
+    reason: 'Prevent Claude Code, Codex, and Gemini Spark from acting on inconsistent spreadsheet assumptions.',
+    userConfirmed: 'yes',
+    related: 'setupAiGovernance',
+  }));
+
+  return {
+    success: true,
+    sheets: [AI_RULES_SHEET_NAME, AI_CHANGE_LOG_SHEET_NAME, AI_MEETING_NOTES_SHEET_NAME],
+  };
+}
+
+function appendAiChangeLog(payload) {
+  requireAdmin_(payload);
+  const sh = ensureSheet_(getSS(), AI_CHANGE_LOG_SHEET_NAME);
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, AI_CHANGE_LOG_HEADERS.length).setValues([AI_CHANGE_LOG_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  const row = [
+    Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+    String(payload.actor || ''),
+    String(payload.tool || ''),
+    String(payload.target || ''),
+    String(payload.changeType || payload.change_type || ''),
+    String(payload.summary || ''),
+    String(payload.reason || ''),
+    String(payload.userConfirmed || payload.user_confirmed || ''),
+    String(payload.related || payload.related_commit_or_range || ''),
+  ];
+  sh.appendRow(row);
+  return { success: true, sheet: AI_CHANGE_LOG_SHEET_NAME, row: sh.getLastRow() };
+}
+
+function appendAiMeetingNote(payload) {
+  requireAdmin_(payload);
+  const sh = ensureSheet_(getSS(), AI_MEETING_NOTES_SHEET_NAME);
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, AI_MEETING_NOTES_HEADERS.length).setValues([AI_MEETING_NOTES_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  const row = [
+    Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+    String(payload.actor || ''),
+    String(payload.conversationSource || payload.conversation_source || ''),
+    String(payload.summary || ''),
+    String(payload.decisions || ''),
+    String(payload.actionItems || payload.action_items || ''),
+    String(payload.affectedDocsOrTabs || payload.affected_docs_or_tabs || ''),
+  ];
+  sh.appendRow(row);
+  return { success: true, sheet: AI_MEETING_NOTES_SHEET_NAME, row: sh.getLastRow() };
+}
+
 // Claude Code → Gemini Spark への申し送りタブ。
 // アプリを変更するたび `npm run sync-gemini` から呼ばれ、全文を書き換える。
 const SPEC_SHEET_NAME = 'アプリ仕様_Claude→Gemini';
@@ -223,15 +356,15 @@ const TEMPLATE_CLAUDE_MD = [
   '（例）半年で -10kg。開始体重 __kg → 目標体重 __kg。',
   '',
   '## AIコーチへの依頼',
-  '毎晩、このシートの実績を読んで翌日の計画を',
+  '朝食後、このシートとチャット報告を読んで当日の計画を',
   '『進捗＆予測ダッシュボード』タブに次の形式で書き込んでください。',
   '',
   'AI次回計画メニュー (2026/01/01 胸 ジム)',
   'ベンチプレス: 20kg*1*10(アップ), 40kg*3*8 | レスト90秒',
   '',
   '## メモ欄の書式',
-  'K列には「睡眠: / 筋肉痛: / 明日:」をアプリが自動で書き込みます。',
-  'それ以外の自由記述は消さずに残されます。',
+  'K列にはGeminiが「睡眠: / 筋肉痛: / 今日: / 朝食:」を書き込みます。',
+  'アプリはK列を上書きしません。',
 ].join('\n');
 
 const LOG_HEADERS = [
@@ -240,7 +373,7 @@ const LOG_HEADERS = [
 ];
 
 const DASHBOARD_GUIDE = [
-  'このタブにはAIコーチ(Gemini等)が翌日の計画を書き込みます。',
+  'このタブにはAIコーチ(Gemini等)が朝食後に当日の計画を書き込みます。',
   'アプリは下記の見出しを探して自動で読み取ります。',
   '',
   '書式:',
@@ -398,30 +531,6 @@ function getDashboard() {
   return { logs, aiPlan };
 }
 
-// K列(メモ・コンディション)に睡眠/筋肉痛/明日の予定を構造化して埋め込む。
-// Gemini が自由記述した部分は温存し、アプリ管轄のセグメントのみ差し替える。
-const APP_KEYS = ['睡眠', '筋肉痛', '明日'];
-
-function buildMemo(existingMemo, payload) {
-  const kept = String(existingMemo || '')
-    .split(' / ')
-    .map(function (s) { return s.trim(); })
-    .filter(function (s) {
-      if (!s) return false;
-      for (let i = 0; i < APP_KEYS.length; i++) {
-        if (s.indexOf(APP_KEYS[i] + ':') === 0) return false;  // アプリ管轄は捨てる
-      }
-      return true;  // Gemini の自由記述は残す
-    });
-
-  const segs = [];
-  if (payload.sleep)    segs.push('睡眠: '   + payload.sleep);
-  if (payload.doms)     segs.push('筋肉痛: ' + payload.doms);
-  if (payload.tomorrow) segs.push('明日: '   + payload.tomorrow);
-
-  return segs.concat(kept).join(' / ');
-}
-
 function appendLog(payload) {
   const ss    = getSS();
   const sheet = getSheet(ss);
@@ -434,7 +543,7 @@ function appendLog(payload) {
   }
 
   if (targetRow > 0) {
-    // 既存行更新: アプリ管轄列(B, H, I)のみ上書き。Gemini管轄(C-G, J, K)は保持。
+    // 既存行更新: アプリ管轄列(B, I)のみ上書き。Gemini管轄(C-H, J, K)は保持。
     const ex = rows[targetRow - 1];
     const rowData = [
       dateStr,                                       // A 日付
@@ -444,10 +553,10 @@ function appendLog(payload) {
       ex[C.FAT]      || '',                         // E F (Gemini)
       ex[C.CARBS]    || '',                         // F C (Gemini)
       ex[C.CAL_BURN] || '',                         // G 消費cal (Gemini)
-      parseInt(payload.steps) || ex[C.STEPS] || '', // H 歩数
+      ex[C.STEPS]    || '',                         // H 歩数 (Gemini)
       payload.workout || ex[C.WORKOUT] || '',        // I 筋トレ
       ex[C.CARDIO]   || '',                         // J その他運動 (保持)
-      buildMemo(ex[C.MEMO], payload),               // K 睡眠/筋肉痛/明日 + Gemini記述
+      ex[C.MEMO]     || '',                         // K メモ・コンディション (Gemini)
     ];
     sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
     return { success: true, action: 'updated', row: targetRow };
@@ -456,10 +565,10 @@ function appendLog(payload) {
       dateStr,
       parseFloat(payload.weight) || '',
       '', '', '', '', '',                            // C-G: Gemini記入欄
-      parseInt(payload.steps)  || '',               // H 歩数
+      '',                                           // H 歩数 (Gemini)
       payload.workout          || '',               // I 筋トレ
       '',                                           // J その他
-      buildMemo('', payload),                       // K 睡眠/筋肉痛/明日
+      '',                                           // K メモ・コンディション (Gemini)
     ];
     sheet.appendRow(rowData);
     return { success: true, action: 'appended' };

@@ -21,7 +21,7 @@ Codex must take over the same engineering and data-analysis role previously assi
 - Keep Claude, Codex, Gemini Spark, and the shared spreadsheet aligned.
 - Treat `CLAUDE.md` as the Claude-facing project memory and mirror any operationally relevant rules here so Codex can act with the same assumptions.
 
-Gemini Spark remains the main AI coach/secretary for daily conversation, meal-photo analysis, calorie/PFC calculation, daily spreadsheet management, nightly 23:30 analysis, calendar checks, and next-day workout planning.
+Gemini Spark remains the main AI coach/secretary for daily conversation, meal-photo analysis, calorie/PFC calculation, daily spreadsheet management, morning same-day workout planning after breakfast, calendar checks, and nightly 23:30 review delivery.
 
 ## Shared Spreadsheet
 
@@ -29,8 +29,9 @@ The shared database is:
 
 - Spreadsheet: `ボディメイク＆減量プロジェクト_総合管理シート`
 - Spreadsheet ID: `1wJefKcr0S2hPcI9s7e1c89kWabnYpgQa0eg315pxtlE`
-- Instruction document: `15kg減量＆ボディメイクプロジェクト_指示書`
+- Instruction document: `15kg減量＆ボディメイクプロジェクト_指示書` (Gemini Spark reads this every time)
 - Instruction document ID: `1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY`
+- Instruction document URL: https://docs.google.com/document/d/1K_0vo2KIpjdZDmvC3bhLQREIQekqTSSR-gOBOd17jnY/edit?usp=sharing
 
 Important tabs:
 
@@ -38,12 +39,34 @@ Important tabs:
 - `進捗＆予測ダッシュボード`: Gemini writes the next workout plan under `AI次回計画メニュー (YYYY/MM/DD 部位 場所)`.
 - `CLAUDE_MD_MASTER`: Gemini-managed master copy of `CLAUDE.md` in A1. `npm run sync-claude` pulls it into the repo.
 - `アプリ仕様_Claude→Gemini`: app/spec handoff from the engineering agent to Gemini. `npm run sync-gemini` pushes `docs/GEMINI_BRIEF.md` into this tab.
+- `AI運用ルール_必読`: mandatory coordination rules for Claude Code, Codex, and Gemini Spark.
+- `AI変更履歴`: append-only log of spreadsheet/app/spec changes made by any AI.
+- `AI会話議事録`: append-only summary of user conversations that affect requirements, operations, data formats, or AI roles.
 
 Use the spreadsheet as the coordination source for the three-tool workflow:
 
 - Gemini Spark writes coaching data and next plans to the sheet.
 - The app reads Gemini's values and writes user-entered records to the sheet.
 - Claude/Codex updates the app and publishes implementation/spec changes back to Gemini through `docs/GEMINI_BRIEF.md` and `npm run sync-gemini`.
+
+## Mandatory AI Coordination Protocol
+
+Before any non-trivial spreadsheet edit, app implementation, data-format change, or AI-role change, every AI must read:
+
+1. `AI運用ルール_必読`
+2. Latest 20 rows of `AI変更履歴`
+3. Latest 20 rows of `AI会話議事録`
+4. `アプリ仕様_Claude→Gemini`
+5. Google Docs `15kg減量＆ボディメイクプロジェクト_指示書`
+6. `CLAUDE_MD_MASTER` / local `CLAUDE.md` / local `AGENTS.md`, as relevant
+
+After changing spreadsheet data, GAS, app code, data contracts, docs, or AI responsibilities:
+
+- Append one row to `AI変更履歴` with timestamp, actor, tool, target, change type, summary, reason, user confirmation, and related commit/range.
+- If the change came from a user conversation or decision, append one row to `AI会話議事録` with summary, decisions, action items, and affected docs/tabs.
+- Update `docs/GEMINI_BRIEF.md` and run `npm run sync-gemini` when Gemini's assumptions or app/spreadsheet contracts changed.
+- If a decision affects Gemini's daily coaching behavior, make sure the Google Docs instruction document is updated or explicitly log that it still needs a manual update.
+- Do not make silent sheet edits. If ownership is unclear, ask the user before editing.
 
 ## Daily Log Contract
 
@@ -58,17 +81,17 @@ Daily log columns in `ボディメイク＆減量プロジェクト_総合管理
 | E | Fat | Gemini |
 | F | Carbs | Gemini |
 | G | Calories burned | Gemini |
-| H | Steps | App |
+| H | Steps | Gemini |
 | I | Workout result | App only |
 | J | Other exercise | Gemini |
-| K | Memo/condition | App/Gemini, segmented |
+| K | Memo/condition | Gemini, segmented |
 
 Do not blur plan and result ownership:
 
-- Gemini owns next-day workout plans in `進捗＆予測ダッシュボード`.
+- Gemini owns same-day morning workout plans in `進捗＆予測ダッシュボード`.
 - The app owns actual workout results in column I.
 - Gemini must not write column I.
-- The app must not overwrite Gemini-owned nutrition/exercise columns C-G and J.
+- The app must not overwrite Gemini-owned nutrition/exercise/condition columns C-H, J, or K.
 
 Column I format written by the app:
 
@@ -84,13 +107,13 @@ Rules:
 - The trailing `回` is required.
 - `formatWorkoutForSheet` and `parseSheetWorkout` must remain compatible as a pair.
 
-Column K is segmented. The app writes/replaces only these leading segments:
+Column K is Gemini-managed and segmented. Gemini writes the morning report context:
 
 ```text
-睡眠: ... / 筋肉痛: ... / 明日: ... / Gemini自由記述
+睡眠: ... / 筋肉痛: ... / 今日: ... / 朝食: ...
 ```
 
-Preserve Gemini's free text. Do not let Gemini-owned free text get erased when updating app-owned segments.
+The app must not overwrite column H or K. Yesterday's steps are written by Gemini to yesterday's H column after the morning chat report.
 
 ## AI Plan Contract
 
@@ -193,10 +216,16 @@ Use `npm run sync-claude` only when intentionally pulling the current `CLAUDE_MD
 - Push Gemini handoff brief to spreadsheet: `npm run sync-gemini`
 - Generate/reuse the local sheet admin token: `npm run sheet:init-admin`
 - List spreadsheet tabs through GAS: `npm run sheet:list`
+- Create/update required AI coordination tabs: `npm run sheet:setup-governance`
 - Read a spreadsheet range through GAS: `npm run sheet:read -- "シート名" "A1:K5"`
 - Write one cell through GAS: `npm run sheet:write -- "シート名" "A1" "text"`
+- Write a local file into one cell through GAS: `npm run sheet:write-file -- "シート名" "A1" "CLAUDE.md"`
 - Clear one cell/range through GAS: `npm run sheet:clear -- "シート名" "A1"`
 - Write a rectangular range through GAS: `npm run sheet:write-json -- "シート名" "A1:B2" "[[1,2],[3,4]]"`
+- Append a change log row: `npm run sheet:log-change -- "{\"actor\":\"Codex\",\"summary\":\"...\"}"`
+- Append a meeting note row: `npm run sheet:log-meeting -- "{\"actor\":\"Codex\",\"summary\":\"...\"}"`
+- PowerShell-safe change log: `npm run sheet:log-change-simple -- "Codex" "tool" "target" "type" "summary" "reason" "yes" "related"`
+- PowerShell-safe meeting note: `npm run sheet:log-meeting-simple -- "Codex" "source" "summary" "decisions" "actions" "affected"`
 - Range read/write commands require `SHEET_ADMIN_TOKEN` in `.env.local`; the same value must be configured in Apps Script properties with `setSheetAdminToken`.
 - Deploy GAS: `npm run deploy-gas`
 
@@ -207,10 +236,12 @@ Before modifying Next.js source code, read the relevant guide under `node_module
 Before starting non-trivial work:
 
 1. Read this file, `CLAUDE.md`, and `docs/GEMINI_BRIEF.md`.
-2. Check `git status --short` and preserve user changes.
-3. Identify whether the change affects app-only behavior or the spreadsheet/Gemini contract.
-4. If the spreadsheet/Gemini contract changes, update and sync `docs/GEMINI_BRIEF.md`.
-5. Keep terminology consistent:
+2. Read `AI運用ルール_必読`, the latest `AI変更履歴`, and the latest `AI会話議事録` from the shared spreadsheet when sheet access is available.
+3. Check `git status --short` and preserve user changes.
+4. Identify whether the change affects app-only behavior or the spreadsheet/Gemini contract.
+5. If the spreadsheet/Gemini contract changes, update and sync `docs/GEMINI_BRIEF.md`.
+6. Log the change and any user-facing decision to the governance tabs.
+7. Keep terminology consistent:
    - `Claude Code` and `Codex` are engineering/data-analysis agents for this repo.
    - `Gemini Spark` is the daily coach and spreadsheet planner.
    - The app records actual workout results.

@@ -13,7 +13,7 @@ function resolveEndpoint(url: unknown): string | null {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { date, weight, steps, workout, sleep, doms, tomorrow } = body;
+  const { date, weight, workout } = body;
   const GAS_ENDPOINT = resolveEndpoint(body.gas);
 
   if (!date) {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   // 設定タブで自分のシートを連携している場合のみ、そのシートにも書き込む（Gemini参照用）
   if (GAS_ENDPOINT) {
     try {
-      const payload = { action: "appendLog", date, weight, steps, workout, sleep, doms, tomorrow };
+      const payload = { action: "appendLog", date, weight, workout };
       const res = await fetch(GAS_ENDPOINT, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },

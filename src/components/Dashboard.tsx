@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { TrendingDown, Calendar, Zap, Activity, Flame } from "lucide-react";
+import { TrendingDown, Calendar, Zap, Activity, Flame, Sparkles, Dumbbell } from "lucide-react";
 import MilestoneCards from "./MilestoneCards";
 import NutritionMeters from "./NutritionMeters";
 import type { DashboardData } from "@/lib/types";
@@ -22,18 +22,6 @@ function StatBadge({ label, value, sub, color }: { label: string; value: string;
   );
 }
 
-function calcDaysAhead(data: DashboardData): number {
-  const startMs = new Date(data.startDate).getTime();
-  const finalMs = new Date(data.finalTargetDate).getTime();
-  const nowMs   = Date.now();
-  const totalDays   = (finalMs - startMs) / 86400000;
-  const daysPassed  = (nowMs  - startMs) / 86400000;
-  if (totalDays <= 0 || daysPassed < 0) return 0;
-  const expectedWeight = data.startWeight - (daysPassed / totalDays) * (data.startWeight - data.finalTarget);
-  const dailyRate = (data.startWeight - data.finalTarget) / totalDays;
-  return Math.round((expectedWeight - data.currentWeight) / dailyRate);
-}
-
 export default function Dashboard({ data }: Props) {
   // Empty state for new users
   if (data.isEmpty || data.currentWeight === 0) {
@@ -47,7 +35,7 @@ export default function Dashboard({ data }: Props) {
         <div className="bg-[#111827] border border-blue-500/20 rounded-2xl p-6 text-center">
           <p className="text-4xl mb-3">💪</p>
           <p className="text-base font-bold text-white mb-1">まだデータがありません</p>
-          <p className="text-xs text-slate-400">「今日」タブから体重・歩数・睡眠を記録すると<br />ここにグラフと分析が表示されます</p>
+          <p className="text-xs text-slate-400">「今日」タブから体重を記録し、朝食後にGeminiへ報告すると<br />ここにグラフと計画が表示されます</p>
         </div>
       </div>
     );
@@ -55,8 +43,7 @@ export default function Dashboard({ data }: Props) {
 
   const lost = data.startWeight - data.currentWeight;
   const remaining = data.currentWeight - data.finalTarget;
-  const progressPct = Math.round((lost / (data.startWeight - data.finalTarget)) * 100);
-  const daysAhead = calcDaysAhead(data);
+  const progressPct = Math.max(0, Math.min(100, Math.round((lost / (data.startWeight - data.finalTarget)) * 100)));
 
   const last7Logs = data.logs.slice(-7);
   const weeklyCals = last7Logs.reduce((sum, l) => sum + (l.calories || 0), 0);
@@ -109,16 +96,6 @@ export default function Dashboard({ data }: Props) {
           </div>
         </div>
 
-        {/* Days-ahead badge */}
-        {daysAhead !== 0 && (
-          <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-            daysAhead > 0
-              ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-              : 'bg-orange-500/15 border border-orange-500/30 text-orange-400'
-          }`}>
-            {daysAhead > 0 ? `⚡ 計画より ${daysAhead}日 前倒し` : `⚠ 計画より ${Math.abs(daysAhead)}日 遅れ`}
-          </div>
-        )}
       </div>
 
       {/* Stat grid — 2 badges */}
@@ -142,7 +119,7 @@ export default function Dashboard({ data }: Props) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Activity size={15} className="text-blue-400" />
-            <h2 className="text-sm font-semibold text-slate-200">体重推移＆予測</h2>
+              <h2 className="text-sm font-semibold text-slate-200">体重推移</h2>
           </div>
           <div className="flex gap-2 text-[9px]">
             <span className="flex items-center gap-1 text-amber-400">
@@ -178,6 +155,68 @@ export default function Dashboard({ data }: Props) {
           <h2 className="text-sm font-semibold text-slate-200">本日の栄養＆歩数</h2>
         </div>
         <NutritionMeters today={data.today} />
+      </div>
+
+      {/* Morning AI plan */}
+      <div className="bg-[#111827] border border-yellow-500/25 rounded-2xl p-4">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} className="text-yellow-300" />
+            <h2 className="text-sm font-semibold text-slate-200">今日のAI計画</h2>
+          </div>
+          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+            data.morningSync.aiPlanReady
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+          }`}>
+            {data.morningSync.aiPlanReady ? '朝計画 確定' : '朝計画 待ち'}
+          </span>
+        </div>
+
+        {data.aiPlan ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+              <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 font-bold text-yellow-300">
+                {data.aiPlan.date}
+              </span>
+              {data.aiPlan.split && (
+                <span className="rounded-full border border-yellow-500/30 px-2 py-0.5 text-yellow-200">
+                  {data.aiPlan.split}
+                </span>
+              )}
+              {data.aiPlan.place && (
+                <span className="rounded-full border border-red-500/30 px-2 py-0.5 text-red-200">
+                  {data.aiPlan.place}
+                </span>
+              )}
+            </div>
+            {data.aiPlan.exercises && data.aiPlan.exercises.length > 0 ? (
+              <div className="space-y-2">
+                {data.aiPlan.exercises.slice(0, 3).map((ex, i) => (
+                  <div key={`${ex.name}-${i}`} className="flex items-center justify-between gap-2 rounded-xl bg-[#0f1a2b] px-3 py-2">
+                    <span className="min-w-0 truncate text-xs font-bold text-slate-100">{ex.name}</span>
+                    <span className="shrink-0 text-[10px] text-yellow-300">
+                      {ex.targetWeight}kg × {ex.targetReps}回
+                    </span>
+                  </div>
+                ))}
+                {data.aiPlan.exercises.length > 3 && (
+                  <p className="text-[10px] text-slate-500">他 {data.aiPlan.exercises.length - 3} 種目は筋トレタブで確認できます</p>
+                )}
+              </div>
+            ) : (
+              <p className="whitespace-pre-line text-xs leading-relaxed text-slate-300">{data.aiPlan.rawText}</p>
+            )}
+            <p className="flex items-center gap-1.5 text-[10px] text-slate-500">
+              <Dumbbell size={11} />
+              筋トレタブでAI計画を適用して記録できます
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-slate-700 px-3 py-4 text-center text-xs text-slate-500">
+            朝食後にGemini Sparkへ報告すると、今日の計画がここに表示されます。
+          </p>
+        )}
       </div>
 
       {/* Weekly calorie balance */}

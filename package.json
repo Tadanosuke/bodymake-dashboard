@@ -11,10 +11,16 @@
     "sync-gemini": "node scripts/push-gemini-brief.js",
     "sheet:init-admin": "node scripts/init-sheet-admin.js",
     "sheet:list": "node scripts/sheet-admin.js list",
+    "sheet:setup-governance": "node scripts/sheet-admin.js setup-governance",
     "sheet:read": "node scripts/sheet-admin.js read",
     "sheet:write": "node scripts/sheet-admin.js write",
+    "sheet:write-file": "node scripts/sheet-admin.js write-file",
     "sheet:clear": "node scripts/sheet-admin.js clear",
     "sheet:write-json": "node scripts/sheet-admin.js write-json",
+    "sheet:log-change": "node scripts/sheet-admin.js log-change",
+    "sheet:log-meeting": "node scripts/sheet-admin.js log-meeting",
+    "sheet:log-change-simple": "node scripts/sheet-admin.js log-change-simple",
+    "sheet:log-meeting-simple": "node scripts/sheet-admin.js log-meeting-simple",
     "deploy-gas": "npx clasp push --force && npx clasp deploy --deploymentId AKfycbw4p0jbXBNSEtFbDzUdIMSX34Rx-GurZiYYJSlKDZ8DGfBjPz4vX0ZlwitxLmfTAq12 -d \"auto\""
   },
   "dependencies": {
