@@ -164,14 +164,10 @@ export function buildDashboard(
   }));
 
   const currentWeight = withWeight.length > 0 ? withWeight[withWeight.length - 1].weight : START_WEIGHT;
-  const observedStartWeight = withWeight.length > 0
-    ? Math.max(...withWeight.map(l => l.weight))
-    : START_WEIGHT;
   const todayLog = logs.find(l => l.date === dateKey()) ?? logs[0];
 
   return {
     ...BASE,
-    startWeight: observedStartWeight,
     currentWeight,
     daysToPhaseTarget: daysTo(PHASE_TARGET_DATE),
     daysToFinalTarget: daysTo(FINAL_TARGET_DATE),

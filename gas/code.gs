@@ -422,15 +422,23 @@ function parseRest(text) {
   return m[2] === '分' ? Math.round(n * 60) : Math.round(n);
 }
 
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value;
+  const n = parseFloat(String(value).replace(/,/g, '').replace(/[^\d.-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
 function parseSetsDetail(text) {
-  // "7.5kg*2*10(アップ)" → { weight: 7.5, count: 2, reps: 10, label: 'アップ' }
+  // "7.5kg*2*10(アップ)" or "20kg*10(アップ)"
+  // → { weight: 7.5, count: 2, reps: 10, label: 'アップ' }
   const out = [];
   String(text).split(',').forEach(function (chunk) {
-    const m = chunk.match(/([\d.]+)\s*kg\s*\*\s*(\d+)\s*\*\s*(\d+)\s*(?:\(([^)]*)\))?/);
+    const m = chunk.match(/([\d.]+)\s*kg\s*\*\s*(?:(\d+)\s*\*\s*)?(\d+)\s*(?:\(([^)]*)\))?/);
     if (m) {
       out.push({
         weight: parseFloat(m[1]),
-        count:  parseInt(m[2]),
+        count:  m[2] ? parseInt(m[2]) : 1,
         reps:   parseInt(m[3]),
         label:  (m[4] || '').trim(),
       });
@@ -467,12 +475,13 @@ function findAiPlan(ss) {
           const detail   = parseSetsDetail(setsPart);
           const working  = detail.filter(function (d) { return !/アップ/.test(d.label); });
           const heaviest = detail.reduce(function (a, b) { return b.weight > a ? b.weight : a; }, 0);
+          const main = working.find(function (d) { return /メイン|main/i.test(d.label); }) || working[0] || detail[0];
           exercises.push({
             muscle:       split,
             name:         name,
             sets:         detail.length || 1,
-            targetWeight: heaviest,
-            targetReps:   working.length ? working[0].reps : (detail.length ? detail[0].reps : 0),
+            targetWeight: main ? main.weight : heaviest,
+            targetReps:   main ? main.reps : 0,
             restSeconds:  parseRest(body),
             setsDetail:   setsPart.trim(),
             setList:      detail,
@@ -507,14 +516,14 @@ function getDashboard() {
   const logs = dataRows
     .map(row => ({
       date:     toDateStr(row[C.DATE]),
-      weight:   parseFloat(row[C.WEIGHT])  || 0,
-      calories: parseInt(row[C.CAL_IN])    || 0,
-      protein:  parseFloat(row[C.PROTEIN]) || 0,
-      fat:      parseFloat(row[C.FAT])     || 0,
-      carbs:    parseFloat(row[C.CARBS])   || 0,
-      steps:    parseInt(row[C.STEPS])     || 0,
+      weight:   toNumber(row[C.WEIGHT]),
+      calories: Math.round(toNumber(row[C.CAL_IN])),
+      protein:  toNumber(row[C.PROTEIN]),
+      fat:      toNumber(row[C.FAT]),
+      carbs:    toNumber(row[C.CARBS]),
+      steps:    Math.round(toNumber(row[C.STEPS])),
       workout:  String(row[C.WORKOUT] || ''),
-      calBurn:  parseInt(row[C.CAL_BURN])  || 0,
+      calBurn:  Math.round(toNumber(row[C.CAL_BURN])),
       cardio:   String(row[C.CARDIO] || ''),
       memo:     String(row[C.MEMO] || ''),
     }))

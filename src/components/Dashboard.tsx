@@ -45,7 +45,7 @@ export default function Dashboard({ data }: Props) {
   const remaining = data.currentWeight - data.finalTarget;
   const progressPct = Math.max(0, Math.min(100, Math.round((lost / (data.startWeight - data.finalTarget)) * 100)));
 
-  const last7Logs = data.logs.slice(-7);
+  const last7Logs = data.logs.slice(0, 7);
   const weeklyCals = last7Logs.reduce((sum, l) => sum + (l.calories || 0), 0);
   const weeklyTarget = data.today.calories.target * 7;
   const weeklyBalance = weeklyCals - weeklyTarget;
